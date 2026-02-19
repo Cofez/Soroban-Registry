@@ -4,6 +4,7 @@ mod error;
 mod state;
 
 use anyhow::Result;
+use axum::http::{header, HeaderValue, Method};
 use axum::Router;
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
@@ -30,7 +31,7 @@ async fn main() -> Result<()> {
     // Database connection
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
-    
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
@@ -46,6 +47,14 @@ async fn main() -> Result<()> {
     // Create app state
     let state = AppState::new(pool);
 
+    let cors = CorsLayer::new()
+        .allow_origin([
+            HeaderValue::from_static("http://localhost:3000"),
+            HeaderValue::from_static("https://soroban-registry.vercel.app"),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+
     // Build router
     let app = Router::new()
         .merge(routes::contract_routes())
@@ -53,6 +62,7 @@ async fn main() -> Result<()> {
         .merge(routes::health_routes())
         .fallback(handlers::route_not_found)
         .layer(CorsLayer::permissive())
+        .layer(cors)
         .with_state(state);
 
     // Start server

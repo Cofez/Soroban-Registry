@@ -63,7 +63,7 @@ export interface PublishRequest {
   publisher_address: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const apiUrl = (path: string) => path;
 
 export const api = {
   // Contract endpoints
@@ -76,25 +76,25 @@ export const api = {
     if (params?.page) queryParams.append('page', String(params.page));
     if (params?.page_size) queryParams.append('page_size', String(params.page_size));
 
-    const response = await fetch(`${API_URL}/api/contracts?${queryParams}`);
+    const response = await fetch(apiUrl(`/api/contracts?${queryParams}`));
     if (!response.ok) throw new Error('Failed to fetch contracts');
     return response.json();
   },
 
   async getContract(id: string): Promise<Contract> {
-    const response = await fetch(`${API_URL}/api/contracts/${id}`);
+    const response = await fetch(apiUrl(`/api/contracts/${id}`));
     if (!response.ok) throw new Error('Failed to fetch contract');
     return response.json();
   },
 
   async getContractVersions(id: string): Promise<ContractVersion[]> {
-    const response = await fetch(`${API_URL}/api/contracts/${id}/versions`);
+    const response = await fetch(apiUrl(`/api/contracts/${id}/versions`));
     if (!response.ok) throw new Error('Failed to fetch contract versions');
     return response.json();
   },
 
   async publishContract(data: PublishRequest): Promise<Contract> {
-    const response = await fetch(`${API_URL}/api/contracts`, {
+    const response = await fetch(apiUrl('/api/contracts'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -105,20 +105,20 @@ export const api = {
 
   // Publisher endpoints
   async getPublisher(id: string): Promise<Publisher> {
-    const response = await fetch(`${API_URL}/api/publishers/${id}`);
+    const response = await fetch(apiUrl(`/api/publishers/${id}`));
     if (!response.ok) throw new Error('Failed to fetch publisher');
     return response.json();
   },
 
   async getPublisherContracts(id: string): Promise<Contract[]> {
-    const response = await fetch(`${API_URL}/api/publishers/${id}/contracts`);
+    const response = await fetch(apiUrl(`/api/publishers/${id}/contracts`));
     if (!response.ok) throw new Error('Failed to fetch publisher contracts');
     return response.json();
   },
 
   // Stats endpoint
   async getStats(): Promise<{ total_contracts: number; verified_contracts: number; total_publishers: number }> {
-    const response = await fetch(`${API_URL}/api/stats`);
+    const response = await fetch(apiUrl('/api/stats'));
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
