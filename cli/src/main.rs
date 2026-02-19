@@ -3,8 +3,16 @@ mod commands;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+const CLI_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (rustc ",
+    env!("RUSTC_VERSION"),
+    ")"
+);
+
 #[derive(Parser)]
 #[command(name = "soroban-registry")]
+#[command(version = CLI_VERSION, long_version = CLI_VERSION)]
 #[command(about = "CLI tool for the Soroban Contract Registry", long_about = None)]
 struct Cli {
     #[command(subcommand)]
