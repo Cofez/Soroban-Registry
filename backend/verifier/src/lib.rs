@@ -6,7 +6,7 @@ use shared::RegistryError;
 
 /// Verify that source code matches deployed contract bytecode
 pub async fn verify_contract(
-    source_code: &str,
+    _source_code: &str,
     deployed_wasm_hash: &str,
 ) -> Result<bool, RegistryError> {
     // TODO: Implement verification logic
@@ -22,7 +22,7 @@ pub async fn verify_contract(
 }
 
 /// Compile Rust source code to WASM
-pub async fn compile_contract(source_code: &str) -> Result<Vec<u8>, RegistryError> {
+pub async fn compile_contract(_source_code: &str) -> Result<Vec<u8>, RegistryError> {
     // TODO: Implement compilation
     // - Set up temporary build environment
     // - Write source to temp directory

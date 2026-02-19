@@ -29,9 +29,47 @@ fn map_query_rejection(err: QueryRejection) -> ApiError {
     ApiError::bad_request("InvalidQuery", format!("Invalid query parameters: {}", err.body_text()))
 }
 
-/// Health check endpoint
-pub async fn health_check() -> &'static str {
-    "OK"
+/// Health check — probes DB connectivity and reports uptime.
+/// Returns 200 when everything is reachable, 503 when the database
+/// connection pool cannot satisfy a trivial query.
+pub async fn health_check(
+    State(state): State<AppState>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let uptime = state.started_at.elapsed().as_secs();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Quick connectivity probe — keeps the query as cheap as possible
+    // so that frequent polling from orchestrators doesn't add load.
+    let db_ok = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.db)
+        .await
+        .is_ok();
+
+    if db_ok {
+        tracing::info!(uptime_secs = uptime, "health check passed");
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "version": "0.1.0",
+                "timestamp": now,
+                "uptime_secs": uptime
+            })),
+        )
+    } else {
+        tracing::warn!(uptime_secs = uptime, "health check degraded — db unreachable");
+
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "status": "degraded",
+                "version": "0.1.0",
+                "timestamp": now,
+                "uptime_secs": uptime
+            })),
+        )
+    }
 }
 
 /// Get registry statistics
