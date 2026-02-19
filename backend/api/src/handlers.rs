@@ -3,6 +3,8 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
+    http::StatusCode,
+    response::IntoResponse,
     Json,
 };
 use shared::{
@@ -103,11 +105,25 @@ pub async fn get_stats(
 pub async fn list_contracts(
     State(state): State<AppState>,
     params: Result<Query<ContractSearchParams>, QueryRejection>,
-) -> ApiResult<Json<PaginatedResponse<Contract>>> {
-    let Query(params) = params.map_err(map_query_rejection)?;
-    let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100);
-    let offset = (page - 1) * page_size;
+) -> axum::response::Response {
+    let Query(params) = match params {
+        Ok(q) => q,
+        Err(err) => return map_query_rejection(err).into_response(),
+    };
+
+    let page = params.page.unwrap_or(1);
+    let limit = params.limit.unwrap_or(20);
+
+    // bad input, bail early
+    if page < 1 || limit < 1 || limit > 100 {
+        return ApiError::bad_request(
+            "InvalidPagination",
+            "page must be >= 1 and limit must be between 1 and 100",
+        )
+        .into_response();
+    }
+
+    let offset = (page - 1) * limit;
 
     // Build dynamic query based on filters
     let mut query = String::from("SELECT * FROM contracts WHERE 1=1");
@@ -135,19 +151,54 @@ pub async fn list_contracts(
         count_query.push_str(&category_clause);
     }
 
-    query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", page_size, offset));
+    query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
 
-    let contracts: Vec<Contract> = sqlx::query_as(&query)
+    let contracts: Vec<Contract> = match sqlx::query_as(&query)
         .fetch_all(&state.db)
         .await
-        .map_err(|err| db_internal_error("list contracts", err))?;
+    {
+        Ok(rows) => rows,
+        Err(err) => return db_internal_error("list contracts", err).into_response(),
+    };
 
-    let total: i64 = sqlx::query_scalar(&count_query)
+    let total: i64 = match sqlx::query_scalar(&count_query)
         .fetch_one(&state.db)
         .await
-        .map_err(|err| db_internal_error("count filtered contracts", err))?;
+    {
+        Ok(n) => n,
+        Err(err) => return db_internal_error("count filtered contracts", err).into_response(),
+    };
 
-    Ok(Json(PaginatedResponse::new(contracts, total, page, page_size)))
+    let paginated = PaginatedResponse::new(contracts, total, page, limit);
+
+    // link headers for pagination
+    let total_pages = paginated.total_pages;
+    let mut links: Vec<String> = Vec::new();
+
+    if page > 1 {
+        links.push(format!(
+            "</api/contracts?page={}&limit={}>; rel=\"prev\"",
+            page - 1,
+            limit
+        ));
+    }
+    if page < total_pages {
+        links.push(format!(
+            "</api/contracts?page={}&limit={}>; rel=\"next\"",
+            page + 1,
+            limit
+        ));
+    }
+
+    let mut response = (StatusCode::OK, Json(paginated)).into_response();
+
+    if !links.is_empty() {
+        if let Ok(header_val) = links.join(", ").parse() {
+            response.headers_mut().insert("Link", header_val);
+        }
+    }
+
+    response
 }
 
 /// Get a specific contract by ID
