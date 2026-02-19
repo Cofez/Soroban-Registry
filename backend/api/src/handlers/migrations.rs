@@ -62,7 +62,7 @@ pub async fn get_migrations(
     State(state): State<AppState>,
 ) -> Result<Json<PaginatedResponse<Migration>>, ApiError> {
     // For simplicity, we'll just return the last 50 migrations
-    let migrations = sqlx::query_as!(
+    let migrations: Vec<Migration> = sqlx::query_as!(
         Migration,
         r#"
         SELECT id, contract_id, status as "status: MigrationStatus", wasm_hash, log_output, created_at, updated_at
@@ -85,7 +85,7 @@ pub async fn get_migration(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Migration>, ApiError> {
-    let migration = sqlx::query_as!(
+    let migration: Option<Migration> = sqlx::query_as!(
         Migration,
         r#"
         SELECT id, contract_id, status as "status: MigrationStatus", wasm_hash, log_output, created_at, updated_at
@@ -96,7 +96,7 @@ pub async fn get_migration(
     )
     .fetch_optional(&state.db)
     .await?
-    .ok_or(ApiError::NotFound("Migration not found".to_string()))?;
+    .ok_or(ApiError::not_found("MigrationNotFound", "Migration not found"))?;
 
     Ok(Json(migration))
 }
