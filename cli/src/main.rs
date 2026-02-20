@@ -11,6 +11,7 @@ mod sla;
 mod test_framework;
 mod wizard;
 mod formal_verification;
+mod coverage;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -274,6 +275,24 @@ pub enum Commands {
         dependencies: String,
         #[arg(long, default_value_t = false)]
         fail_on_high: bool,
+    },
+
+    /// Measure and report code coverage for contract tests
+    Coverage {
+        /// Path to contract directory
+        contract_path: String,
+
+        /// Path to test directory or file
+        #[arg(long)]
+        tests: String,
+
+        /// Fail if coverage is below this threshold (0-100)
+        #[arg(long, default_value_t = 0.0)]
+        threshold: f64,
+
+        /// Output directory for HTML reports
+        #[arg(long, default_value = "coverage_report")]
+        output: String,
     },
 }
 
@@ -675,6 +694,9 @@ async fn main() -> Result<()> {
         },
         Commands::ScanDeps { contract_id, dependencies, fail_on_high } => {
             commands::scan_deps(&cli.api_url, &contract_id, &dependencies, fail_on_high).await?;
+        }
+        Commands::Coverage { contract_path, tests, threshold, output } => {
+            coverage::run(&contract_path, &tests, threshold, &output).await?;
         }
     }
 
