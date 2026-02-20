@@ -827,3 +827,246 @@ mod tests {
     // Given the constraints and the environment, we focus on unit tests for parsing here.
     // `resolve_network` with file interaction is harder to test in isolation without dependency injection or mocking `dirs` / `fs`.
 }
+/// Validate a contract function call for type safety
+pub async fn validate_call(
+    api_url: &str,
+    contract_id: &str,
+    method_name: &str,
+    params: &[String],
+    strict: bool,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/validate-call", api_url, contract_id);
+
+    let body = json!({
+        "method_name": method_name,
+        "params": params,
+        "strict": strict
+    });
+
+    log::debug!("POST {} body={}", url, body);
+
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to validate contract call")?;
+
+    let status = response.status();
+    let data: serde_json::Value = response.json().await?;
+
+    if !status.is_success() {
+        let error_msg = data["message"].as_str().unwrap_or("Unknown error");
+        println!("\n{} {}", "Error:".bold().red(), error_msg);
+        anyhow::bail!("Validation failed: {}", error_msg);
+    }
+
+    let valid = data["valid"].as_bool().unwrap_or(false);
+
+    println!("\n{}", "Contract Call Validation".bold().cyan());
+    println!("{}", "=".repeat(60).cyan());
+    println!("\n{}: {}", "Function".bold(), method_name);
+    println!("{}: {}", "Contract".bold(), contract_id);
+    println!("{}: {}", "Strict Mode".bold(), if strict { "Yes" } else { "No" });
+
+    if valid {
+        println!("\n{} {}", "✓".green().bold(), "Call is valid!".green().bold());
+
+        // Show parsed parameters
+        if let Some(params) = data["parsed_params"].as_array() {
+            println!("\n{}", "Parsed Parameters:".bold());
+            for param in params {
+                let name = param["name"].as_str().unwrap_or("?");
+                let type_name = param["expected_type"].as_str().unwrap_or("?");
+                println!("  {} {}: {}", "•".green(), name.bold(), type_name);
+            }
+        }
+
+        // Show expected return type
+        if let Some(ret) = data["expected_return"].as_str() {
+            println!("\n{}: {}", "Returns".bold(), ret);
+        }
+
+        // Show warnings
+        if let Some(warnings) = data["warnings"].as_array() {
+            if !warnings.is_empty() {
+                println!("\n{}", "Warnings:".bold().yellow());
+                for warning in warnings {
+                    let msg = warning["message"].as_str().unwrap_or("?");
+                    println!("  {} {}", "⚠".yellow(), msg);
+                }
+            }
+        }
+    } else {
+        println!("\n{} {}", "✗".red().bold(), "Call is invalid!".red().bold());
+
+        // Show errors
+        if let Some(errors) = data["errors"].as_array() {
+            println!("\n{}", "Errors:".bold().red());
+            for error in errors {
+                let code = error["code"].as_str().unwrap_or("?");
+                let msg = error["message"].as_str().unwrap_or("?");
+                let field = error["field"].as_str();
+
+                if let Some(f) = field {
+                    println!("  {} [{}] {}: {}", "✗".red(), code.bright_black(), f.bold(), msg);
+                } else {
+                    println!("  {} [{}] {}", "✗".red(), code.bright_black(), msg);
+                }
+
+                if let Some(expected) = error["expected"].as_str() {
+                    println!("      Expected: {}", expected.green());
+                }
+                if let Some(actual) = error["actual"].as_str() {
+                    println!("      Actual:   {}", actual.red());
+                }
+            }
+        }
+    }
+
+    println!("\n{}", "=".repeat(60).cyan());
+    println!();
+
+    if !valid {
+        anyhow::bail!("Validation failed");
+    }
+
+    Ok(())
+}
+
+/// Generate type-safe bindings for a contract
+pub async fn generate_bindings(
+    api_url: &str,
+    contract_id: &str,
+    language: &str,
+    output: Option<&str>,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/api/contracts/{}/bindings?language={}",
+        api_url, contract_id, language
+    );
+
+    log::debug!("GET {}", url);
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to generate bindings")?;
+
+    let status = response.status();
+
+    if !status.is_success() {
+        let error: serde_json::Value = response.json().await?;
+        let msg = error["message"].as_str().unwrap_or("Unknown error");
+        anyhow::bail!("Failed to generate bindings: {}", msg);
+    }
+
+    let bindings = response.text().await?;
+
+    if let Some(output_path) = output {
+        fs::write(output_path, &bindings)?;
+        println!(
+            "\n{} {} bindings written to: {}",
+            "✓".green().bold(),
+            language,
+            output_path
+        );
+    } else {
+        // Print to stdout
+        println!("{}", bindings);
+    }
+
+    Ok(())
+}
+
+/// List functions available on a contract
+pub async fn list_functions(api_url: &str, contract_id: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/functions", api_url, contract_id);
+
+    log::debug!("GET {}", url);
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to list contract functions")?;
+
+    let status = response.status();
+    let data: serde_json::Value = response.json().await?;
+
+    if !status.is_success() {
+        let msg = data["message"].as_str().unwrap_or("Unknown error");
+        anyhow::bail!("Failed to list functions: {}", msg);
+    }
+
+    let contract_name = data["contract_name"].as_str().unwrap_or("Unknown");
+    let functions = data["functions"].as_array();
+
+    println!("\n{}", "Contract Functions".bold().cyan());
+    println!("{}", "=".repeat(60).cyan());
+    println!("\n{}: {}", "Contract".bold(), contract_name);
+    println!("{}: {}", "ID".bold(), contract_id);
+
+    if let Some(funcs) = functions {
+        println!("\n{} {} function(s):\n", "Found".bold(), funcs.len());
+
+        for func in funcs {
+            let name = func["name"].as_str().unwrap_or("?");
+            let visibility = func["visibility"].as_str().unwrap_or("?");
+            let return_type = func["return_type"].as_str().unwrap_or("void");
+            let is_mutable = func["is_mutable"].as_bool().unwrap_or(false);
+
+            let visibility_badge = if visibility == "public" {
+                "public".green()
+            } else {
+                "internal".yellow()
+            };
+
+            let mutability = if is_mutable {
+                "mut".red()
+            } else {
+                "view".blue()
+            };
+
+            println!(
+                "  {} {} {} {}",
+                "fn".bright_blue(),
+                name.bold(),
+                visibility_badge,
+                mutability
+            );
+
+            // Parameters
+            if let Some(params) = func["params"].as_array() {
+                let param_strs: Vec<String> = params
+                    .iter()
+                    .map(|p| {
+                        let pname = p["name"].as_str().unwrap_or("?");
+                        let ptype = p["type_name"].as_str().unwrap_or("?");
+                        format!("{}: {}", pname, ptype)
+                    })
+                    .collect();
+
+                println!("     ({}) -> {}", param_strs.join(", "), return_type);
+            }
+
+            // Doc
+            if let Some(doc) = func["doc"].as_str() {
+                println!("     /// {}", doc.bright_black());
+            }
+
+            println!();
+        }
+    } else {
+        println!("\nNo functions found.");
+    }
+
+    println!("{}", "=".repeat(60).cyan());
+    println!();
+
+    Ok(())
+}

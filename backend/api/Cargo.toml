@@ -44,6 +44,7 @@ lru = "0.16.3"
 rand = "0.8"
 regex = "1.10"
 lazy_static = "1.4"
+hex = "0.4"
 prometheus = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
