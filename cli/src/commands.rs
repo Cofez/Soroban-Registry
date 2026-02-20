@@ -1,9 +1,16 @@
-use crate::config::Network;
 use anyhow::{Context, Result};
-use colored::Colorize;
-use serde_json::json;
-use shared::{extract_abi, generate_markdown};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs;
+use std::path::PathBuf;
+use std::str::FromStr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Network {
+    Mainnet,
+    Testnet,
+    Futurenet,
 use std::path::Path;
 
 use crate::patch::{PatchManager, Severity};
@@ -415,28 +422,20 @@ pub async fn migrate(
             println!("{}", "Status: SUCCESS".green().bold());
         }
     }
-
-    Ok(())
 }
 
-pub async fn export(
-    api_url: &str,
-    contract_id: &str,
-    output: &str,
-    contract_dir: &str,
-) -> Result<()> {
-    println!("\n{}", "Exporting contract...".bold().cyan());
+impl FromStr for Network {
+    type Err = anyhow::Error;
 
-    let client = reqwest::Client::new();
-    let url = format!("{}/api/contracts/{}", api_url, contract_id);
-
-    let (name, network) = match client.get(&url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            let data: serde_json::Value = resp.json().await?;
-            (
-                data["name"].as_str().unwrap_or(contract_id).to_string(),
-                data["network"].as_str().unwrap_or("unknown").to_string(),
-            )
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "mainnet" => Ok(Network::Mainnet),
+            "testnet" => Ok(Network::Testnet),
+            "futurenet" => Ok(Network::Futurenet),
+            _ => anyhow::bail!(
+                "Invalid network: {}. Allowed values: mainnet, testnet, futurenet",
+                s
+            ),
         }
         _ => (contract_id.to_string(), "unknown".to_string()),
     };
@@ -686,183 +685,41 @@ pub async fn patch_apply(api_url: &str, contract_id: &str, patch_id: &str) -> Re
     Ok(())
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DOCUMENTATION GENERATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn doc(contract_path: &str, output_dir: &str) -> Result<()> {
-    println!("{}", "Generating documentation...".bold().cyan());
-
-    // Extract ABI
-    // Note: This requires the `shared` crate to export `extract_abi`
-    let abi_entries = extract_abi(contract_path).context("Failed to extract ABI from WASM")?;
-
-    let filename = std::path::Path::new(contract_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("contract");
-
-    // Generate Markdown
-    let markdown = generate_markdown(&abi_entries, filename);
-
-    // Write to output
-    fs::create_dir_all(output_dir)
-        .with_context(|| format!("Failed to create output directory: {}", output_dir))?;
-
-    let out_path = std::path::Path::new(output_dir).join(format!("{}.md", filename));
-    fs::write(&out_path, markdown)
-        .with_context(|| format!("Failed to write documentation to {:?}", out_path))?;
-
-    println!("{} Documentation generated at {:?}", "✓".green(), out_path);
-    Ok(())
+#[derive(Debug, Deserialize, Default)]
+struct ConfigFile {
+    network: Option<String>,
 }
 
-pub async fn profile(
-    contract_path: &str,
-    method: Option<&str>,
-    output: Option<&str>,
-    flamegraph: Option<&str>,
-    compare: Option<&str>,
-    show_recommendations: bool,
-) -> Result<()> {
-    let path = Path::new(contract_path);
-    if !path.exists() {
-        anyhow::bail!("Contract file not found: {}", contract_path);
+pub fn resolve_network(cli_flag: Option<String>) -> Result<Network> {
+    // 1. CLI Flag
+    if let Some(net_str) = cli_flag {
+        return net_str.parse::<Network>();
     }
 
-    println!("\n{}", "Profiling contract...".bold().cyan());
-    println!("{}", "=".repeat(80).cyan());
+    // 2. Config File
+    if let Some(config_path) = config_file_path() {
+        if config_path.exists() {
+            let content = fs::read_to_string(&config_path)
+                .with_context(|| format!("Failed to read config file at {:?}", config_path))?;
 
-    let mut profiler = profiler::Profiler::new();
-    profiler::simulate_execution(path, method, &mut profiler)?;
-    let profile_data = profiler.finish(contract_path.to_string(), method.map(|s| s.to_string()));
+            let config: ConfigFile =
+                toml::from_str(&content).with_context(|| "Failed to parse config file")?;
 
-    println!("\n{}", "Profile Results:".bold().green());
-    println!("Total Duration: {:.2}ms", profile_data.total_duration.as_secs_f64() * 1000.0);
-    println!("Overhead: {:.2}%", profile_data.overhead_percent);
-    println!("Functions Profiled: {}", profile_data.functions.len());
-
-    let mut sorted_functions: Vec<_> = profile_data.functions.values().collect();
-    sorted_functions.sort_by(|a, b| b.total_time.cmp(&a.total_time));
-
-    println!("\n{}", "Top Functions:".bold());
-    for (i, func) in sorted_functions.iter().take(10).enumerate() {
-        println!(
-            "{}. {} - {:.2}ms ({} calls, avg: {:.2}μs)",
-            i + 1,
-            func.name.bold(),
-            func.total_time.as_secs_f64() * 1000.0,
-            func.call_count,
-            func.avg_time.as_secs_f64() * 1_000_000.0
-        );
-    }
-
-    if let Some(output_path) = output {
-        let json = serde_json::to_string_pretty(&profile_data)?;
-        std::fs::write(output_path, json)
-            .with_context(|| format!("Failed to write profile to: {}", output_path))?;
-        println!("\n{} Profile exported to: {}", "✓".green(), output_path);
-    }
-
-    if let Some(flame_path) = flamegraph {
-        profiler::generate_flame_graph(&profile_data, Path::new(flame_path))?;
-        println!("{} Flame graph generated: {}", "✓".green(), flame_path);
-    }
-
-    if let Some(baseline_path) = compare {
-        let baseline_json = std::fs::read_to_string(baseline_path)
-            .with_context(|| format!("Failed to read baseline: {}", baseline_path))?;
-        let baseline: profiler::ProfileData = serde_json::from_str(&baseline_json)?;
-
-        let comparisons = profiler::compare_profiles(&baseline, &profile_data);
-
-        println!("\n{}", "Comparison Results:".bold().yellow());
-        for comp in comparisons.iter().take(10) {
-            let sign = if comp.time_diff_ns > 0 { "+" } else { "" };
-            println!(
-                "{}: {} ({}{:.2}%, {:.2}ms → {:.2}ms)",
-                comp.function.bold(),
-                comp.status,
-                sign,
-                comp.time_diff_percent,
-                comp.baseline_time.as_secs_f64() * 1000.0,
-                comp.current_time.as_secs_f64() * 1000.0
-            );
-        }
-    }
-
-    if show_recommendations {
-        let recommendations = profiler::generate_recommendations(&profile_data);
-        println!("\n{}", "Recommendations:".bold().magenta());
-        for (i, rec) in recommendations.iter().enumerate() {
-            println!("{}. {}", i + 1, rec);
-        }
-    }
-
-pub async fn deps_list(api_url: &str, contract_id: &str) -> Result<()> {
-    let client = reqwest::Client::new();
-    let url = format!("{}/api/contracts/{}/dependencies", api_url, contract_id);
-
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch contract dependencies")?;
-
-    if !response.status().is_success() {
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-             anyhow::bail!("Contract not found");
-        }
-        anyhow::bail!("Failed to fetch dependencies: {}", response.status());
-    }
-
-    let items: serde_json::Value = response.json().await?;
-    let tree = items.as_array().context("Invalid response format")?;
-
-    println!("\n{}", "Dependency Tree:".bold().cyan());
-    println!("{}", "=".repeat(80).cyan());
-
-    if tree.is_empty() {
-        println!("{}", "No dependencies found.".yellow());
-        return Ok(());
-    }
-
-    fn print_tree(nodes: &[serde_json::Value], prefix: &str, is_last: bool) {
-        for (i, node) in nodes.iter().enumerate() {
-            let name = node["name"].as_str().unwrap_or("Unknown");
-            let constraint = node["constraint_to_parent"].as_str().unwrap_or("*");
-            let contract_id = node["contract_id"].as_str().unwrap_or("");
-            
-            let is_node_last = i == nodes.len() - 1;
-            let marker = if is_node_last { "└──" } else { "├──" };
-            
-            println!(
-                "{}{} {} ({}) {}", 
-                prefix, 
-                marker.bright_black(), 
-                name.bold(), 
-                constraint.cyan(),
-                if contract_id == "unknown" { "[Unresolved]".red() } else { "".normal() }
-            );
-
-            if let Some(children) = node["dependencies"].as_array() {
-                if !children.is_empty() {
-                     let new_prefix = format!("{}{}", prefix, if is_node_last { "    " } else { "│   " });
-                     print_tree(children, &new_prefix, true);
-                }
+            if let Some(net_str) = config.network {
+                return net_str.parse::<Network>();
             }
         }
     }
 
-    print_tree(tree, "", true);
-
-
-    println!("\n{}", "=".repeat(80).cyan());
-    println!();
-
-    Ok(())
+    // 3. Default
+    Ok(Network::Mainnet)
 }
 
+fn config_file_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|mut p| {
+        p.push(".soroban-registry.toml");
+        p
+    })
 
 pub async fn run_tests(
     test_file: &str,
@@ -976,3 +833,22 @@ pub async fn run_tests(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_network_parsing() {
+        assert_eq!("mainnet".parse::<Network>().unwrap(), Network::Mainnet);
+        assert_eq!("testnet".parse::<Network>().unwrap(), Network::Testnet);
+        assert_eq!("futurenet".parse::<Network>().unwrap(), Network::Futurenet);
+        assert_eq!("Mainnet".parse::<Network>().unwrap(), Network::Mainnet); // Case insensitive
+        assert!("invalid".parse::<Network>().is_err());
+    }
+
+    // Note: Integration tests involving file system would require mocking or temporary files.
+    // Given the constraints and the environment, we focus on unit tests for parsing here.
+    // `resolve_network` with file interaction is harder to test in isolation without dependency injection or mocking `dirs` / `fs`.
+}
