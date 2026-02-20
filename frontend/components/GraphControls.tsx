@@ -1,9 +1,8 @@
-'use client';
-
+import { useState } from 'react';
 import {
     Search, ZoomIn, ZoomOut, Maximize2, Download, FileImage,
     GitBranch, Circle, Activity, Sparkles, ChevronUp, ChevronDown,
-    Keyboard, ChevronLeft, ChevronRight
+    Keyboard, ChevronLeft, ChevronRight, BarChart2
 } from 'lucide-react';
 
 interface GraphControlsProps {
@@ -31,6 +30,8 @@ interface GraphControlsProps {
     onPanDown?: () => void;
     onPanLeft?: () => void;
     onPanRight?: () => void;
+    // per-network node counts for the stats panel
+    networkCounts?: { mainnet: number; testnet: number; futurenet: number; other: number };
 }
 
 export default function GraphControls({
@@ -58,7 +59,9 @@ export default function GraphControls({
     onPanDown,
     onPanLeft,
     onPanRight,
+    networkCounts,
 }: GraphControlsProps) {
+    const [statsOpen, setStatsOpen] = useState(false);
     return (
         <>
             {/* Top-left: Search + Filters */}
@@ -194,23 +197,77 @@ export default function GraphControls({
                 </div>
             </div>
 
-            {/* Top-right: Stats bar */}
+            {/* Top-right: Graph Stats panel (collapsible) */}
             <div className="absolute top-4 right-4 z-30">
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-gray-700/50 rounded-xl p-3 shadow-2xl flex items-center gap-4">
-                    <div className="text-center">
-                        <div className="text-lg font-bold text-white">{totalNodes.toLocaleString()}</div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider">Nodes</div>
-                    </div>
-                    <div className="w-px h-8 bg-gray-700" />
-                    <div className="text-center">
-                        <div className="text-lg font-bold text-white">{totalEdges.toLocaleString()}</div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider">Edges</div>
-                    </div>
-                    <div className="w-px h-8 bg-gray-700" />
-                    <div className="text-center">
-                        <div className="text-lg font-bold text-amber-400">{criticalCount}</div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-wider">Critical</div>
-                    </div>
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
+                    {/* Header row — always visible */}
+                    <button
+                        id="graph-stats-toggle"
+                        onClick={() => setStatsOpen((o) => !o)}
+                        className="flex items-center gap-3 px-4 py-2.5 w-full hover:bg-gray-800/50 transition-colors"
+                        aria-expanded={statsOpen}
+                        aria-controls="graph-stats-body"
+                    >
+                        <BarChart2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <div className="flex items-center gap-3 flex-1">
+                            <div className="text-center">
+                                <div className="text-sm font-bold text-white leading-none">{totalNodes.toLocaleString()}</div>
+                                <div className="text-[9px] text-gray-500 uppercase tracking-wider">Nodes</div>
+                            </div>
+                            <div className="w-px h-6 bg-gray-700" />
+                            <div className="text-center">
+                                <div className="text-sm font-bold text-white leading-none">{totalEdges.toLocaleString()}</div>
+                                <div className="text-[9px] text-gray-500 uppercase tracking-wider">Edges</div>
+                            </div>
+                            <div className="w-px h-6 bg-gray-700" />
+                            <div className="text-center">
+                                <div className="text-sm font-bold text-amber-400 leading-none">{criticalCount}</div>
+                                <div className="text-[9px] text-gray-500 uppercase tracking-wider">Critical</div>
+                            </div>
+                        </div>
+                        <ChevronDown
+                            className={`w-3 h-3 text-gray-500 transition-transform duration-200 ${statsOpen ? "rotate-180" : ""}`}
+                        />
+                    </button>
+
+                    {/* Expandable body — network breakdown */}
+                    {statsOpen && (
+                        <div id="graph-stats-body" className="border-t border-gray-700/50 px-4 py-3 space-y-2">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Network Breakdown</p>
+                            {[
+                                { label: "Mainnet", color: "bg-green-500", count: networkCounts?.mainnet ?? 0 },
+                                { label: "Testnet", color: "bg-blue-500", count: networkCounts?.testnet ?? 0 },
+                                { label: "Futurenet", color: "bg-purple-500", count: networkCounts?.futurenet ?? 0 },
+                                { label: "Other", color: "bg-gray-500", count: networkCounts?.other ?? 0 },
+                            ].map(({ label, color, count }) => count > 0 ? (
+                                <div key={label} className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${color} shrink-0`} />
+                                    <span className="text-[11px] text-gray-400 flex-1">{label}</span>
+                                    <span className="text-[11px] font-mono text-gray-300">{count.toLocaleString()}</span>
+                                    <div className="w-16 bg-gray-800 rounded-full h-1 overflow-hidden">
+                                        <div
+                                            className={`h-1 rounded-full ${color}`}
+                                            style={{ width: `${Math.round((count / Math.max(totalNodes, 1)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null)}
+                            <div className="border-t border-gray-800 pt-2 mt-1">
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-gray-500">Avg edges/node</span>
+                                    <span className="text-gray-400 font-mono">
+                                        {totalNodes > 0 ? (totalEdges / totalNodes).toFixed(1) : "0.0"}
+                                    </span>
+                                </div>
+                                {networkFilter !== "all" && (
+                                    <div className="flex justify-between text-[10px] mt-1">
+                                        <span className="text-gray-500">Active filter</span>
+                                        <span className="text-blue-400 font-mono capitalize">{networkFilter}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

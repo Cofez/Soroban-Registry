@@ -118,6 +118,19 @@ export function GraphContent() {
         return count;
     }, [dependentCounts]);
 
+    // Per-network node counts for the stats panel
+    const networkCounts = useMemo(() => {
+        const counts = { mainnet: 0, testnet: 0, futurenet: 0, other: 0 };
+        for (const node of (graphData?.nodes ?? [])) {
+            const n = node.network?.toLowerCase() ?? "";
+            if (n === "mainnet") counts.mainnet++;
+            else if (n === "testnet") counts.testnet++;
+            else if (n === "futurenet") counts.futurenet++;
+            else counts.other++;
+        }
+        return counts;
+    }, [graphData]);
+
     const handleNodeClick = useCallback((node: GraphNode | null) => {
         setSelectedNode(node);
     }, []);
@@ -273,6 +286,7 @@ export function GraphContent() {
                 onPanDown={() => graphRef.current?.panDown()}
                 onPanLeft={() => graphRef.current?.panLeft()}
                 onPanRight={() => graphRef.current?.panRight()}
+                networkCounts={networkCounts}
             />
 
             {/* Selected Node Panel */}
