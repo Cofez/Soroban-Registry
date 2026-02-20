@@ -3,22 +3,81 @@ mod config;
 mod export;
 mod import;
 mod manifest;
+mod patch; // Added to ensure patch module is found
+mod wizard;
 
-    /// Generate documentation from contract
-    Doc {
-        /// Path to contract WASM file
-        contract_path: String,
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use crate::patch::Severity;
 
-        /// Output directory
-        #[arg(long, default_value = "docs")]
-        output: String,
-    },
+#[derive(Parser)]
+#[command(name = "soroban-registry")]
+#[command(about = "A package manager for Soroban smart contracts", version)]
+struct Cli {
+    #[arg(long, default_value = "http://localhost:3001")]
+    api_url: String,
+
+    #[arg(long)]
+    network: Option<String>,
+
+    #[command(subcommand)]
+    command: Commands,
 }
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Search for contracts
+    Search { query: String, #[arg(long)] verified_only: bool },
+    /// Get contract details
+    Info { contract_id: String },
+    /// Publish a contract
+    Publish {
+        contract_id: String,
+        name: String,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        tags: Option<String>,
+        #[arg(long)]
+        publisher: String,
+    },
+    /// List recent contracts
+    List { #[arg(long, default_value_t = 10)] limit: usize },
+    /// Migrate a contract
+    Migrate {
+        contract_id: String,
+        wasm: String,
+        #[arg(long)] simulate_fail: bool,
+        #[arg(long)] dry_run: bool,
+    },
+    /// Export contract archive
+    Export { id: String, output: String, contract_dir: String },
+    /// Import contract archive
+    Import { archive: String, output_dir: String },
+    /// Generate documentation from contract
+    Doc { contract_path: String, #[arg(long, default_value = "docs")] output: String },
+    /// Run setup wizard
+    Wizard {},
+    /// View command history
+    History { search: Option<String>, #[arg(long, default_value_t = 10)] limit: usize },
+    /// Manage security patches
+    Patch { #[command(subcommand)] action: PatchCommands },
+}
+
+#[derive(Subcommand)]
+pub enum PatchCommands {
+    Create { version: String, hash: String, severity: String, rollout: u8 },
+    Notify { patch_id: String },
+    Apply { contract_id: String, patch_id: String },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Resolve network configuration
+    // Resolve network configuration (Handles "auto" routing logic from config.rs)
     let network = config::resolve_network(cli.network)?;
 
     match cli.command {
@@ -91,5 +150,4 @@ async fn main() -> Result<()> {
         },
     }
     Ok(())
-}
 }

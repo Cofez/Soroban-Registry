@@ -14,15 +14,15 @@ pub async fn run(_api_url: &str) -> Result<()> {
 
     let network = prompt_with_validation(
         "Select network [mainnet|testnet|futurenet] (default: testnet)",
-        Some("testnet"),
-        |s| matches!(s.to_lowercase().as_str(), "mainnet" | "testnet" | "futurenet"),
+        Some("testnet".to_string()),
+        |s: &str| matches!(s.to_lowercase().as_str(), "mainnet" | "testnet" | "futurenet"),
         "Invalid network. Choose mainnet, testnet, or futurenet.",
     )?;
 
     let signer = prompt_with_validation(
         "Enter signer address or secret (starts with G… or S…)",
-        None,
-        |s| {
+        None::<String>,
+        |s: &str| {
             let s = s.trim();
             (s.starts_with('G') || s.starts_with('S')) && s.len() >= 56
         },
@@ -31,8 +31,8 @@ pub async fn run(_api_url: &str) -> Result<()> {
 
     let wasm_path = prompt_with_validation(
         "Path to contract WASM (.wasm)",
-        None,
-        |s| {
+        None::<String>,
+        |s: &str| {
             let p = Path::new(s.trim());
             p.exists() && p.is_file() && p.extension().map(|e| e == "wasm").unwrap_or(false)
         },
@@ -54,8 +54,8 @@ pub async fn run(_api_url: &str) -> Result<()> {
 
     let max_fee_str = prompt_with_validation(
         "Max fee (stroops), integer",
-        Some("100000".into()),
-        |s| s.trim().parse::<u64>().is_ok(),
+        Some("100000".to_string()),
+        |s: &str| s.trim().parse::<u64>().is_ok(),
         "Provide a positive integer.",
     )?;
     let max_fee: u64 = max_fee_str.trim().parse().unwrap_or(100_000);
@@ -109,8 +109,8 @@ pub async fn run(_api_url: &str) -> Result<()> {
     }
 
     let soroban_available = detect_soroban();
-    let mut status = "success";
-    let mut error_msg: Option<String> = None;
+    let status = "success";
+    let error_msg: Option<String> = None;
 
     if soroban_available {
         println!("{}", "soroban CLI detected. Simulating deployment...".bright_black());
@@ -291,20 +291,28 @@ fn prompt(label: &str, default: Option<String>) -> Result<String> {
 
 fn prompt_with_validation<F>(
     label: &str,
-    default: Option<impl Into<String>>,
-    validate: F,
+    default: Option<String>,
+    mut validator: F,
     error_msg: &str,
-) -> Result<String>
-where
-    F: Fn(&str) -> bool,
+) -> Result<String> 
+where 
+    F: FnMut(&str) -> bool 
 {
     loop {
-        let def = default.as_ref().map(|d| d.into());
-        let value = prompt(label, def.clone().map(|s| s.into()))?;
-        if validate(&value) {
-            return Ok(value);
+        let value = prompt(label, default.clone())?;
+        
+        // If the user entered something, validate it
+        if !value.is_empty() {
+            if validator(&value) {
+                return Ok(value);
+            }
+        } 
+        // If they entered nothing but there is a default, use it
+        else if let Some(def_val) = &default {
+            return Ok(def_val.clone());
         }
-        println!("{}", error_msg.red());
+
+        println!("{}", format!("Error: {}", error_msg).red());
     }
 }
 
