@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import ContractCard from '@/components/ContractCard';
-import { Search, Package, CheckCircle, Users, ArrowRight, Sparkles } from 'lucide-react';
+import { Search, Package, CheckCircle, Users, ArrowRight, Sparkles, GitBranch } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -47,10 +47,11 @@ export default function Home() {
                 Browse
               </Link>
               <Link
-                href="/templates"
-                className="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                href="/graph"
+                className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
               >
-                Templates
+                <GitBranch className="w-4 h-4" />
+                Graph
               </Link>
               <Link
                 href="/publish"

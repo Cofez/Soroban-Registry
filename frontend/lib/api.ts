@@ -15,6 +15,17 @@ export interface Contract {
   updated_at: string;
 }
 
+export interface ContractHealth {
+  contract_id: string;
+  status: 'healthy' | 'warning' | 'critical';
+  last_activity: string;
+  security_score: number;
+  audit_date?: string;
+  total_score: number;
+  recommendations: string[];
+  updated_at: string;
+}
+
 export interface ContractVersion {
   id: string;
   contract_id: string;
@@ -42,6 +53,14 @@ export interface PaginatedResponse<T> {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface DependencyTreeNode {
+  contract_id: string;
+  name: string;
+  current_version: string;
+  constraint_to_parent: string;
+  dependencies: DependencyTreeNode[];
 }
 
 export interface ContractSearchParams {
@@ -201,6 +220,12 @@ export const api = {
     return response.json();
   },
 
+  async getContractHealth(id: string): Promise<ContractHealth> {
+    const response = await fetch(apiUrl(`/api/contracts/${id}/health`));
+    if (!response.ok) throw new Error('Failed to fetch contract health');
+    return response.json();
+  },
+
   // Publisher endpoints
   async getPublisher(id: string): Promise<Publisher> {
     if (USE_MOCKS) {
@@ -241,26 +266,13 @@ export const api = {
     return response.json();
   },
 
-  async getTemplates(category?: string): Promise<Template[]> {
-    if (USE_MOCKS) {
-      return Promise.resolve(
-        category ? MOCK_TEMPLATES.filter(t => t.category === category) : MOCK_TEMPLATES
-      );
-    }
-    const url = category ? `${API_URL}/api/templates?category=${category}` : `${API_URL}/api/templates`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch templates');
-    return response.json();
-  },
-
-  async getTemplate(slug: string): Promise<Template> {
-    if (USE_MOCKS) {
-      const t = MOCK_TEMPLATES.find(t => t.slug === slug);
-      if (!t) throw new Error('Template not found');
-      return Promise.resolve(t);
-    }
-    const response = await fetch(`${API_URL}/api/templates/${slug}`);
-    if (!response.ok) throw new Error('Failed to fetch template');
+  // Graph endpoint
+  async getContractGraph(network?: string): Promise<GraphResponse> {
+    const queryParams = new URLSearchParams();
+    if (network) queryParams.append('network', network);
+    const qs = queryParams.toString();
+    const response = await fetch(apiUrl(`/api/contracts/graph${qs ? `?${qs}` : ''}`));
+    if (!response.ok) throw new Error('Failed to fetch contract graph');
     return response.json();
   },
 };
@@ -278,6 +290,25 @@ export interface Template {
 }
 
 
+export interface GraphNode {
+  id: string;
+  contract_id: string;
+  name: string;
+  network: 'mainnet' | 'testnet' | 'futurenet';
+  is_verified: boolean;
+  category?: string;
+  tags: string[];
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  dependency_type: string;
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 export interface ContractExample {
   id: string;
   contract_id: string;

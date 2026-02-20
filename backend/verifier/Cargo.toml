@@ -11,8 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 shared = { path = "../shared" }
-tracing = "0.1"
-
 
 tokio = { workspace = true }
 serde = { workspace = true }

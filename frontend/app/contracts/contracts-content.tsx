@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation';
 export function ContractsContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('query') || '';
-  
+
   const [filters, setFilters] = useState<ContractSearchParams>({
     query: initialQuery,
     page: 1,
@@ -98,7 +98,7 @@ export function ContractsContent() {
           <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
             Showing {data.items.length} of {data.total} contracts
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {data.items.map((contract) => (
               <ContractCard key={contract.id} contract={contract} />
@@ -115,11 +115,11 @@ export function ContractsContent() {
               >
                 Previous
               </button>
-              
+
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 Page {filters.page || 1} of {data.total_pages}
               </span>
-              
+
               <button
                 onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
                 disabled={(filters.page || 1) >= data.total_pages}
