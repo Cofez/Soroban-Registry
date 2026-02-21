@@ -1,5 +1,5 @@
-use anyhow::{Context, Result, bail};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use anyhow::{bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -37,7 +37,11 @@ pub async fn sign_package(
 
     let signing_address = derive_stellar_address(&public_key_bytes);
 
-    println!("  {}: {}", "Signing Address".bold(), signing_address.bright_magenta());
+    println!(
+        "  {}: {}",
+        "Signing Address".bold(),
+        signing_address.bright_magenta()
+    );
     println!("  {}: {}", "Contract ID".bold(), contract_id.bright_black());
     println!("  {}: {}", "Version".bold(), version);
 
@@ -166,7 +170,11 @@ async fn verify_with_signature(
 
     if valid {
         println!("{}", "\n✓ Signature is VALID".green().bold());
-        println!("  {}: {}", "Signing Address".bold(), signing_address.bright_magenta());
+        println!(
+            "  {}: {}",
+            "Signing Address".bold(),
+            signing_address.bright_magenta()
+        );
         println!("  {}: {}", "Status".bold(), signature_status.green());
         if let Some(signed_at) = result["signed_at"].as_str() {
             println!("  {}: {}", "Signed At".bold(), signed_at);
@@ -187,7 +195,10 @@ async fn verify_from_registry(
     version: Option<&str>,
     package_hash: &str,
 ) -> Result<()> {
-    let mut url = format!("{}/api/signatures/lookup?contract_id={}", api_url, contract_id);
+    let mut url = format!(
+        "{}/api/signatures/lookup?contract_id={}",
+        api_url, contract_id
+    );
 
     if let Some(v) = version {
         url.push_str(&format!("&version={}", v));
@@ -210,7 +221,10 @@ async fn verify_from_registry(
         .context("No signatures found in response")?;
 
     if signatures.is_empty() {
-        println!("{}", "\n✗ No signatures found for this package".yellow().bold());
+        println!(
+            "{}",
+            "\n✗ No signatures found for this package".yellow().bold()
+        );
         return Ok(());
     }
 
@@ -229,13 +243,28 @@ async fn verify_from_registry(
             } else if status == "revoked" {
                 println!("{}", "\n✗ Signature has been REVOKED".red().bold());
             } else {
-                println!("{}", format!("\n⚠ Signature status: {}", status).yellow().bold());
+                println!(
+                    "{}",
+                    format!("\n⚠ Signature status: {}", status).yellow().bold()
+                );
             }
 
-            println!("  {}: {}", "Signing Address".bold(), signing_address.bright_magenta());
+            println!(
+                "  {}: {}",
+                "Signing Address".bold(),
+                signing_address.bright_magenta()
+            );
             println!("  {}: {}", "Status".bold(), status);
-            println!("  {}: {}", "Version".bold(), sig["version"].as_str().unwrap_or("?"));
-            println!("  {}: {}", "Signed At".bold(), sig["signed_at"].as_str().unwrap_or("?"));
+            println!(
+                "  {}: {}",
+                "Version".bold(),
+                sig["version"].as_str().unwrap_or("?")
+            );
+            println!(
+                "  {}: {}",
+                "Signed At".bold(),
+                sig["signed_at"].as_str().unwrap_or("?")
+            );
 
             if let Some(reason) = sig["revoked_reason"].as_str() {
                 println!("  {}: {}", "Revocation Reason".bold(), reason.red());
@@ -246,7 +275,9 @@ async fn verify_from_registry(
     if !found_valid {
         println!(
             "{}",
-            "\n✗ No matching signature found for this package hash".yellow().bold()
+            "\n✗ No matching signature found for this package hash"
+                .yellow()
+                .bold()
         );
     }
 
@@ -283,7 +314,11 @@ pub async fn revoke_signature(
     }
 
     println!("{}", "✓ Signature revoked successfully!".green().bold());
-    println!("  {}: {}", "Signature ID".bold(), signature_id.bright_black());
+    println!(
+        "  {}: {}",
+        "Signature ID".bold(),
+        signature_id.bright_black()
+    );
     println!("  {}: {}", "Revoked By".bold(), revoked_by.bright_magenta());
     println!("  {}: {}", "Reason".bold(), reason);
     println!();
@@ -317,7 +352,11 @@ pub async fn get_chain_of_custody(api_url: &str, contract_id: &str) -> Result<()
         return Ok(());
     }
 
-    println!("\n  {}: {}\n", "Contract ID".bold(), contract_id.bright_black());
+    println!(
+        "\n  {}: {}\n",
+        "Contract ID".bold(),
+        contract_id.bright_black()
+    );
 
     for entry in &entries {
         let action = entry["action"].as_str().unwrap_or("?");
@@ -411,7 +450,12 @@ pub async fn get_transparency_log(
     }
 
     let total = result["total"].as_i64().unwrap_or(entries.len() as i64);
-    println!("{}\nShowing {} of {} entries\n", "=".repeat(70).cyan(), entries.len(), total);
+    println!(
+        "{}\nShowing {} of {} entries\n",
+        "=".repeat(70).cyan(),
+        entries.len(),
+        total
+    );
 
     Ok(())
 }
@@ -491,8 +535,8 @@ fn create_signing_message(hash: &str, contract_id: &str, version: &str) -> Vec<u
 }
 
 fn derive_stellar_address(public_key_bytes: &[u8; 32]) -> String {
-    use sha2::{Digest as _, Sha256};
     use ripemd::Ripemd160;
+    use sha2::{Digest as _, Sha256};
 
     let sha256_hash = Sha256::digest(public_key_bytes);
     let ripemd_hash = Ripemd160::digest(&sha256_hash);

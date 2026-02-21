@@ -44,28 +44,36 @@ pub async fn run(
     post_results: bool,
 ) -> Result<()> {
     if output_format != "json" {
-        println!("\n{}", "Starting Formal Verification Analysis...".bold().cyan());
+        println!(
+            "\n{}",
+            "Starting Formal Verification Analysis...".bold().cyan()
+        );
         println!("Contract: {}", contract_path);
         println!("Properties: {}", properties_file);
         println!("{}", "=".repeat(80).cyan());
     }
 
-    let config_contents = fs::read_to_string(properties_file)
-        .context(format!("Failed to read properties file: {}", properties_file))?;
-    
-    let config: PropertiesConfig = toml::from_str(&config_contents)
-        .context("Failed to parse TOML properties file")?;
+    let config_contents = fs::read_to_string(properties_file).context(format!(
+        "Failed to read properties file: {}",
+        properties_file
+    ))?;
+
+    let config: PropertiesConfig =
+        toml::from_str(&config_contents).context("Failed to parse TOML properties file")?;
 
     let contract_contents = match fs::read(contract_path) {
         Ok(c) => c,
         Err(_) => {
             if output_format != "json" {
-                println!("{}", "⚠ Failed to read contract file, returning UNKNOWN for all...".yellow());
+                println!(
+                    "{}",
+                    "⚠ Failed to read contract file, returning UNKNOWN for all...".yellow()
+                );
             }
             Vec::new()
         }
     };
-    
+
     // Convert to text for simple invariant matching. In reality you'd disassemble or use a real solver.
     let contract_text = String::from_utf8_lossy(&contract_contents).to_lowercase();
 
@@ -81,7 +89,7 @@ pub async fn run(
 
     for prop in config.property {
         let (status, counterexample) = evaluate_invariant(&prop.invariant, &contract_text);
-        
+
         match status.as_str() {
             "Proved" => report.properties_proved += 1,
             "Violated" => report.properties_violated += 1,
@@ -108,11 +116,14 @@ pub async fn run(
         if output_format != "json" {
             println!("\n{}", "Posting results to registry...".bold().cyan());
         }
-        
+
         let client = reqwest::Client::new();
         // Just demonstrating the endpoint structure.
-        let url = format!("{}/api/contracts/00000000-0000-0000-0000-000000000000/formal-verification", api_url);
-        
+        let url = format!(
+            "{}/api/contracts/00000000-0000-0000-0000-000000000000/formal-verification",
+            api_url
+        );
+
         // This simulates a full valid report payload for `FormalVerificationReport` model
         let payload = serde_json::json!({
             "session": {
@@ -175,9 +186,14 @@ fn print_report(report: &VerificationReport) {
             _ => ("?", "UNKNOWN".yellow().bold()),
         };
 
-        println!("\n{} {} [{}]", icon, res.description.bold(), res.id.bright_black());
+        println!(
+            "\n{} {} [{}]",
+            icon,
+            res.description.bold(),
+            res.id.bright_black()
+        );
         println!("  Result: {}", color_status);
-        
+
         if let Some(ce) = &res.counterexample {
             println!("  {} {}", "↳ Counterexample:".red(), ce);
         }
@@ -204,21 +220,35 @@ fn evaluate_invariant(invariant: &str, contract_text: &str) -> (String, Option<S
             if contract_text.contains("require_auth") {
                 ("Proved".to_string(), None)
             } else {
-                ("Violated".to_string(), Some("Function allows transfer without `require_auth` check on the sender.".to_string()))
+                (
+                    "Violated".to_string(),
+                    Some(
+                        "Function allows transfer without `require_auth` check on the sender."
+                            .to_string(),
+                    ),
+                )
             }
         }
         "checked_arithmetic" => {
             if !contract_text.contains("overflow") {
                 ("Proved".to_string(), None)
             } else {
-                ("Violated".to_string(), Some("Unsafe arithmetic detected. A crafted input can cause integer overflow.".to_string()))
+                (
+                    "Violated".to_string(),
+                    Some(
+                        "Unsafe arithmetic detected. A crafted input can cause integer overflow."
+                            .to_string(),
+                    ),
+                )
             }
         }
-        "no_reentrancy" => {
-            ("Proved".to_string(), None)
-        }
-        _ => {
-            ("Unknown".to_string(), Some(format!("Invariant pattern '{}' not recognized by static engine.", invariant)))
-        }
+        "no_reentrancy" => ("Proved".to_string(), None),
+        _ => (
+            "Unknown".to_string(),
+            Some(format!(
+                "Invariant pattern '{}' not recognized by static engine.",
+                invariant
+            )),
+        ),
     }
 }

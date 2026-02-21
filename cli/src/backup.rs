@@ -71,11 +71,14 @@ pub async fn list_backups(api_url: &str, contract_id: &str) -> Result<()> {
 
 pub async fn restore_backup(api_url: &str, contract_id: &str, backup_date: &str) -> Result<()> {
     let client = reqwest::Client::new();
-    
+
     println!("🔄 Restoring backup from {}...", backup_date);
-    
+
     let restoration: BackupRestoration = client
-        .post(format!("{}/api/contracts/{}/backups/restore", api_url, contract_id))
+        .post(format!(
+            "{}/api/contracts/{}/backups/restore",
+            api_url, contract_id
+        ))
         .json(&RestoreBackupRequest {
             backup_date: backup_date.to_string(),
         })
@@ -111,7 +114,10 @@ pub async fn verify_backup(api_url: &str, contract_id: &str, backup_date: &str) 
 pub async fn backup_stats(api_url: &str, contract_id: &str) -> Result<()> {
     let client = reqwest::Client::new();
     let stats: serde_json::Value = client
-        .get(format!("{}/api/contracts/{}/backups/stats", api_url, contract_id))
+        .get(format!(
+            "{}/api/contracts/{}/backups/stats",
+            api_url, contract_id
+        ))
         .send()
         .await?
         .json()

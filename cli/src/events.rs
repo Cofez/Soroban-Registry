@@ -42,7 +42,7 @@ pub async fn query_events(
 
     if stats_only {
         let url = format!("{}/api/contracts/{}/events/stats", api_url, contract_id);
-        
+
         let response = client
             .get(&url)
             .send()
@@ -57,10 +57,14 @@ pub async fn query_events(
         let stats: EventStats = response.json().await?;
 
         println!("\n{}", "Event Statistics".bold());
-        println!("  {}: {}", "Contract ID".bold(), stats.contract_id.bright_black());
+        println!(
+            "  {}: {}",
+            "Contract ID".bold(),
+            stats.contract_id.bright_black()
+        );
         println!("  {}: {}", "Total Events".bold(), stats.total_events);
         println!("  {}: {}", "Unique Topics".bold(), stats.unique_topics);
-        
+
         if let Some(first) = &stats.first_event {
             println!("  {}: {}", "First Event".bold(), first);
         }
@@ -73,7 +77,11 @@ pub async fn query_events(
                 println!("\n{}", "Events by Topic".bold());
                 for (topic, count) in obj.iter() {
                     let count_val = count.as_i64().unwrap_or(0);
-                    println!("  {} {}", topic.bright_magenta(), format!("({})", count_val).bright_black());
+                    println!(
+                        "  {} {}",
+                        topic.bright_magenta(),
+                        format!("({})", count_val).bright_black()
+                    );
                 }
             }
         }
@@ -109,14 +117,17 @@ pub async fn query_events(
     let events: Vec<ContractEvent> = response.json().await?;
 
     if let Some(path) = export_path {
-        let mut csv = String::from("id,contract_id,topic,data,ledger_sequence,transaction_hash,timestamp,network\n");
-        
+        let mut csv = String::from(
+            "id,contract_id,topic,data,ledger_sequence,transaction_hash,timestamp,network\n",
+        );
+
         for event in &events {
-            let data_str = event.data
+            let data_str = event
+                .data
                 .as_ref()
                 .map(|d| serde_json::to_string(d).unwrap_or_default())
                 .unwrap_or_default();
-            
+
             csv.push_str(&format!(
                 "{},{},{},{},{},{},{},{}\n",
                 event.id,
@@ -131,7 +142,12 @@ pub async fn query_events(
         }
 
         std::fs::write(path, csv)?;
-        println!("{} Exported {} events to {}", "✓".green(), events.len(), path);
+        println!(
+            "{} Exported {} events to {}",
+            "✓".green(),
+            events.len(),
+            path
+        );
         return Ok(());
     }
 
@@ -149,13 +165,9 @@ pub async fn query_events(
             "Timestamp".bold(),
             event.timestamp.bright_black()
         );
-        
+
         if let Some(tx_hash) = &event.transaction_hash {
-            println!(
-                "  {}: {}...",
-                "Tx".bold(),
-                &tx_hash[..16].bright_black()
-            );
+            println!("  {}: {}...", "Tx".bold(), &tx_hash[..16].bright_black());
         }
 
         if let Some(data) = &event.data {

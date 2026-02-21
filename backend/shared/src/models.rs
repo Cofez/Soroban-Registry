@@ -857,10 +857,6 @@ pub struct ContractAuditLog {
     pub new_value: Option<serde_json::Value>,
     pub changed_by: String,
     pub timestamp: DateTime<Utc>,
-    pub old_value:   Option<serde_json::Value>,
-    pub new_value:   Option<serde_json::Value>,
-    pub changed_by:  String,
-    pub timestamp:   DateTime<Utc>,
     pub previous_hash: Option<String>,
     pub hash: Option<String>,
     pub signature: Option<String>,
@@ -940,16 +936,6 @@ pub struct ProposalSignature {
 }
 
 /// Paginated response for audit log
-// TODO: Implement missing types: DeployProposal, MultisigPolicy, ProposalSignature
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct ProposalWithSignatures {
-//     pub proposal: DeployProposal,
-//     pub policy: MultisigPolicy,
-//     pub signatures: Vec<ProposalSignature>,
-//     /// How many more signatures are needed to reach the threshold
-//     pub signatures_needed: i32,
-// }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProposalWithSignatures {
     pub proposal: DeployProposal,
