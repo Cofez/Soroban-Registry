@@ -59,6 +59,12 @@ mod regression_engine;
 mod regression_handlers;
 mod regression_routes;
 mod regression_service;
+mod signing_handlers;
+mod signing_routes;
+mod maintenance_middleware;
+mod maintenance_handlers;
+mod maintenance_routes;
+mod maintenance_scheduler;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
@@ -873,6 +879,7 @@ async fn main() -> Result<()> {
         .merge(residency_routes::residency_routes())
         .merge(type_safety_routes::type_safety_routes())
         .merge(regression_routes::regression_routes())
+        .merge(signing_routes::signing_routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(metrics_middleware))
         .layer(middleware::from_fn_with_state(

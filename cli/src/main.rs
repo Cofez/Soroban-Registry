@@ -6,6 +6,7 @@ mod fuzz;
 mod import;
 mod manifest;
 mod multisig;
+mod package_signing;
 mod patch;
 mod profiler;
 mod sla;
@@ -303,6 +304,52 @@ pub enum Commands {
         #[arg(long, default_value = "coverage_report")]
         output: String,
     },
+
+    /// Sign a contract package with your private key
+    Sign {
+        /// Path to the package file to sign
+        package: String,
+
+        /// Private key (base64-encoded Ed25519)
+        #[arg(long)]
+        private_key: String,
+
+        /// Contract ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Package version
+        #[arg(long)]
+        version: String,
+
+        /// Signature expiration (RFC3339 format)
+        #[arg(long)]
+        expires_at: Option<String>,
+    },
+
+    /// Verify a signed contract package
+    Verify {
+        /// Path to the package file to verify
+        package: String,
+
+        /// Contract ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Package version (optional)
+        #[arg(long)]
+        version: Option<String>,
+
+        /// Signature (base64, optional - will lookup from registry if not provided)
+        #[arg(long)]
+        signature: Option<String>,
+    },
+
+    /// Manage signing keys and signatures
+    Keys {
+        #[command(subcommand)]
+        action: KeysCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -505,6 +552,43 @@ pub enum DepsCommands {
     List {
         /// Contract ID
         contract_id: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum KeysCommands {
+    /// Generate a new Ed25519 keypair for signing
+    Generate {},
+
+    /// Revoke a signature
+    Revoke {
+        /// Signature ID to revoke
+        signature_id: String,
+        /// Address of the revoker
+        #[arg(long)]
+        revoked_by: String,
+        /// Reason for revocation
+        #[arg(long)]
+        reason: String,
+    },
+
+    /// Show chain of custody for a contract
+    Custody {
+        /// Contract ID
+        contract_id: String,
+    },
+
+    /// View transparency log
+    Log {
+        /// Filter by contract ID
+        #[arg(long)]
+        contract_id: Option<String>,
+        /// Filter by entry type
+        #[arg(long)]
+        entry_type: Option<String>,
+        /// Maximum entries to show
+        #[arg(long, default_value = "20")]
+        limit: usize,
     },
 }
 
@@ -744,6 +828,61 @@ async fn main() -> Result<()> {
         }
         Commands::Coverage { contract_path, tests, threshold, output } => {
             coverage::run(&contract_path, &tests, threshold, &output).await?;
+        }
+        Commands::Sign { package, private_key, contract_id, version, expires_at } => {
+            log::debug!(
+                "Command: sign | package={} contract_id={} version={}",
+                package, contract_id, version
+            );
+            package_signing::sign_package(
+                &cli.api_url,
+                &package,
+                &private_key,
+                &contract_id,
+                &version,
+                expires_at.as_deref(),
+            ).await?;
+        }
+        Commands::Verify { package, contract_id, version, signature } => {
+            log::debug!(
+                "Command: verify | package={} contract_id={}",
+                package, contract_id
+            );
+            package_signing::verify_package(
+                &cli.api_url,
+                &package,
+                &contract_id,
+                version.as_deref(),
+                signature.as_deref(),
+            ).await?;
+        }
+        Commands::Keys { action } => match action {
+            KeysCommands::Generate {} => {
+                log::debug!("Command: keys generate");
+                package_signing::generate_keypair()?;
+            }
+            KeysCommands::Revoke { signature_id, revoked_by, reason } => {
+                log::debug!("Command: keys revoke | signature_id={}", signature_id);
+                package_signing::revoke_signature(
+                    &cli.api_url,
+                    &signature_id,
+                    &revoked_by,
+                    &reason,
+                ).await?;
+            }
+            KeysCommands::Custody { contract_id } => {
+                log::debug!("Command: keys custody | contract_id={}", contract_id);
+                package_signing::get_chain_of_custody(&cli.api_url, &contract_id).await?;
+            }
+            KeysCommands::Log { contract_id, entry_type, limit } => {
+                log::debug!("Command: keys log");
+                package_signing::get_transparency_log(
+                    &cli.api_url,
+                    contract_id.as_deref(),
+                    entry_type.as_deref(),
+                    *limit,
+                ).await?;
+            }
         }
     }
 
