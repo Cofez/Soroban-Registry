@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, ContractSearchParams } from '@/lib/api';
 import ContractCard from '@/components/ContractCard';
+import ContractCardSkeleton from '@/components/ContractCardSkeleton';
 import { ActiveFilters } from '@/components/contracts/ActiveFilters';
 import { FilterPanel } from '@/components/contracts/FilterPanel';
 import { ResultsCount } from '@/components/contracts/ResultsCount';
@@ -362,9 +363,16 @@ export function ContractsContent() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        </div>
+        <>
+          <div className="mb-4">
+            <div className="h-6 w-48 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ContractCardSkeleton key={i} />
+            ))}
+          </div>
+        </>
       ) : data && data.items.length > 0 ? (
         <>
           <div className="mb-4">
