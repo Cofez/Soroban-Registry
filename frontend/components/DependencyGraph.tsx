@@ -69,7 +69,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
     const gRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
     const [tooltip, setTooltip] = useState<TooltipState | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    // Pinned node IDs — their fx/fy are kept fixed in the simulation
+    const scrollWrapperRef = useRef<HTMLDivElement>(null); // ← new: scroll wrapper ref
     const [, setPinnedNodes] = useState<Set<string>>(new Set());
     const pinnedRef = useRef<Set<string>>(new Set());
 
@@ -240,9 +240,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
           .distanceMax(isLargeGraph ? 200 : 400))
         .force("center", d3.forceCenter(0, 0))
         .force("collision", d3.forceCollide<SimNode>().radius((d) => d.radius + (isLargeGraph ? 2 : 4)))
-        // Faster convergence for large graphs — fewer ticks means lower CPU cost
         .alphaDecay(isVeryLargeGraph ? 0.06 : isLargeGraph ? 0.04 : 0.025)
-        // Stop simulation once sufficiently stable
         .alphaMin(0.001);
 
       // ── Edges ──
@@ -254,10 +252,9 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         .attr("stroke", "#374151")
         .attr("stroke-width", isLargeGraph ? 0.8 : 1.5)
         .attr("stroke-opacity", isLargeGraph ? 0.35 : 0.6)
-        // Skip arrows on very large graphs — avoids thousands of marker lookups
         .attr("marker-end", isVeryLargeGraph ? null : "url(#arrow)");
 
-      // ── Nodes (group containing circle + text) ──
+      // ── Nodes ──
       const nodeGroup = g.append("g").attr("class", "nodes");
       const nodeEls = nodeGroup.selectAll<SVGGElement, SimNode>("g.node")
         .data(simNodes, (d) => d.id)
@@ -265,7 +262,6 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         .attr("class", "node")
         .style("cursor", "pointer");
 
-      // Circle
       nodeEls.append("circle")
         .attr("r", (d) => d.radius)
         .attr("data-id", (d) => d.id)
@@ -277,7 +273,6 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         })
         .attr("stroke-width", 2.5);
 
-      // Label — skip for large graphs to reduce DOM size significantly
       if (!isLargeGraph) {
         nodeEls.append("text")
           .attr("dy", (d) => d.radius + 12)
@@ -288,7 +283,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
           .text((d) => d.data.name.length > 14 ? d.data.name.slice(0, 13) + "…" : d.data.name);
       }
 
-      // ── Drag: release non-pinned nodes, keep pinned fixed ──
+      // ── Drag ──
       const drag = d3.drag<SVGGElement, SimNode>()
         .on("start", (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -301,14 +296,13 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         })
         .on("end", (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          // Only release if NOT pinned
           if (!pinnedRef.current.has(d.id)) {
             d.fx = null;
             d.fy = null;
           }
         });
 
-      // ── Pin indicator (small cross symbol) ──
+      // ── Pin indicator ──
       const pinGroup = nodeEls.append("g")
         .attr("class", "pin-indicator")
         .attr("pointer-events", "none")
@@ -334,7 +328,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
 
       nodeEls.call(drag as unknown as (selection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>) => void);
 
-      // ── Tooltip + edge-hover highlight ──
+      // ── Tooltip + hover highlight ──
       nodeEls.on("mouseenter", (event: MouseEvent, d) => {
         const svgRect = svgEl.getBoundingClientRect();
         setTooltip({
@@ -344,7 +338,6 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
           dependents: dependentCounts.get(d.id) ?? 0,
         });
 
-        // Skip edge dimming if a node is already selected (selection handles it)
         if (!selectedNode) {
           const connected = new Set<string>([d.id]);
           linkEls.each(function (ld) {
@@ -393,30 +386,25 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         onNodeClick?.(d.data);
       });
 
-      // ── Double-click: pin / unpin node ──
+      // ── Double-click: pin / unpin ──
       nodeEls.on("dblclick", (event: MouseEvent, d) => {
         event.stopPropagation();
         const isPinned = pinnedRef.current.has(d.id);
         if (isPinned) {
-          // Unpin: release from fixed position
           pinnedRef.current.delete(d.id);
           d.fx = null;
           d.fy = null;
-          // Hide pin indicator
           d3.select(event.currentTarget as SVGGElement)
             .select(".pin-indicator")
             .attr("display", "none");
         } else {
-          // Pin: lock current position
           pinnedRef.current.add(d.id);
           d.fx = d.x;
           d.fy = d.y;
-          // Show pin indicator
           d3.select(event.currentTarget as SVGGElement)
             .select(".pin-indicator")
             .attr("display", null);
         }
-        // Sync React state for hint text
         setPinnedNodes(new Set(pinnedRef.current));
         simulation.alphaTarget(0.1).restart();
       });
@@ -437,7 +425,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
           .attr("cy", 0);
       });
 
-      // Initial zoom-to-fit after simulation stabilises a bit
+      // Initial zoom-to-fit
       const initialZoomTimer = setTimeout(() => {
         const rect2 = svgEl.getBoundingClientRect();
         svg.call(
@@ -448,7 +436,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         );
       }, isVeryLargeGraph ? 1500 : isLargeGraph ? 900 : 600);
 
-      // Responsive resize — update SVG dimensions on container resize
+      // Responsive resize
       let resizeObserver: ResizeObserver | null = null;
       if (typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver((entries) => {
@@ -469,15 +457,13 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nodes, edges, dependentCounts, isLargeGraph, isVeryLargeGraph]);
 
-    // ── Highlight selected node & neighbours ────────────────────────────────
+    // ── Highlight selected node & neighbours ──────────────────────────────
     useEffect(() => {
       const g = gRef.current;
       if (!g) return;
 
       if (!selectedNode) {
-        // Clear all dim/highlight
-        g.selectAll<SVGGElement, SimNode>("g.node")
-          .attr("opacity", 1);
+        g.selectAll<SVGGElement, SimNode>("g.node").attr("opacity", 1);
         g.selectAll<SVGLineElement, SimLink>("line.graph-edge")
           .attr("opacity", 0.6)
           .attr("stroke", "#374151");
@@ -510,7 +496,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         });
     }, [selectedNode]);
 
-    // ── Search highlight ────────────────────────────────────────────────────
+    // ── Search highlight ──────────────────────────────────────────────────
     useEffect(() => {
       const g = gRef.current;
       if (!g) return;
@@ -532,7 +518,7 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
         });
     }, [searchQuery, dependentCounts]);
 
-    // ── Empty / loading states ──────────────────────────────────────────────
+    // ── Empty state ───────────────────────────────────────────────────────
     if (nodes.length === 0) {
       return (
         <div className="w-full h-full flex items-center justify-center bg-gray-950">
@@ -542,64 +528,80 @@ const DependencyGraph = forwardRef<DependencyGraphHandle, DependencyGraphProps>(
     }
 
     return (
-      <div ref={containerRef} className="relative w-full h-full bg-gray-950">
-        <svg
-          ref={svgRef}
-          className="w-full h-full"
-          style={{ display: "block", touchAction: "none" }}
-        />
 
-        {/* Performance notice for very large graphs */}
-        {isVeryLargeGraph && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-            <div className="bg-amber-900/80 backdrop-blur border border-amber-700/50 rounded-lg px-3 py-1.5 text-xs text-amber-200">
-              Large graph ({nodes.length.toLocaleString()} nodes) — labels hidden for performance
-            </div>
-          </div>
-        )}
+      <div
+        ref={scrollWrapperRef}
+        className="w-full overflow-x-auto"               // ← enables horizontal scroll on mobile
+        style={{ WebkitOverflowScrolling: "touch" }}     // ← smooth momentum scroll on iOS
+      >
+        {/* Mobile scroll hint — hidden on md+ */}
+        <p className="md:hidden text-xs text-gray-500 text-center pb-1 select-none pointer-events-none">
+          ← Scroll to explore →
+        </p>
 
-        {/* Tooltip */}
-        {tooltip && (
-          <div
-            className="pointer-events-none absolute z-40 bg-gray-900/95 backdrop-blur-xl border border-gray-700/60 rounded-xl px-3 py-2.5 shadow-2xl text-xs max-w-[220px]"
-            style={{
-              left: tooltip.x + 14,
-              top: tooltip.y - 10,
-              transform: tooltip.x > (containerRef.current?.clientWidth ?? 0) - 240
-                ? "translateX(-110%)"
-                : "none",
-            }}
-          >
-            <p className="font-semibold text-white mb-1 truncate">{tooltip.node.name}</p>
-            <p className="font-mono text-gray-500 truncate text-[10px] mb-1.5">
-              {tooltip.node.contract_id.slice(0, 12)}…
-            </p>
-            <div className="space-y-0.5">
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Network</span>
-                <span style={{ color: NETWORK_COLOR[tooltip.node.network] ?? "#9ca3af" }}>
-                  {tooltip.node.network}
-                </span>
+        {/* Inner container: enforces minimum width so graph isn't crushed */}
+        <div
+          ref={containerRef}
+          className="relative h-full bg-gray-950 min-w-[600px] md:min-w-0"  // ← key change
+        >
+          <svg
+            ref={svgRef}
+            className="w-full h-full"
+            style={{ display: "block", touchAction: "none" }}
+          />
+
+          {/* Performance notice for very large graphs */}
+          {isVeryLargeGraph && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+              <div className="bg-amber-900/80 backdrop-blur border border-amber-700/50 rounded-lg px-3 py-1.5 text-xs text-amber-200">
+                Large graph ({nodes.length.toLocaleString()} nodes) — labels hidden for performance
               </div>
-              {tooltip.node.category && (
+            </div>
+          )}
+
+          {/* Tooltip */}
+          {tooltip && (
+            <div
+              className="pointer-events-none absolute z-40 bg-gray-900/95 backdrop-blur-xl border border-gray-700/60 rounded-xl px-3 py-2.5 shadow-2xl text-xs max-w-[220px]"
+              style={{
+                left: tooltip.x + 14,
+                top: tooltip.y - 10,
+                transform: tooltip.x > (containerRef.current?.clientWidth ?? 0) - 240
+                  ? "translateX(-110%)"
+                  : "none",
+              }}
+            >
+              <p className="font-semibold text-white mb-1 truncate">{tooltip.node.name}</p>
+              <p className="font-mono text-gray-500 truncate text-[10px] mb-1.5">
+                {tooltip.node.contract_id.slice(0, 12)}…
+              </p>
+              <div className="space-y-0.5">
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-400">Type</span>
-                  <span className="text-gray-200">{tooltip.node.category}</span>
+                  <span className="text-gray-400">Network</span>
+                  <span style={{ color: NETWORK_COLOR[tooltip.node.network] ?? "#9ca3af" }}>
+                    {tooltip.node.network}
+                  </span>
                 </div>
-              )}
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Verified</span>
-                <span className={tooltip.node.is_verified ? "text-green-400" : "text-gray-500"}>
-                  {tooltip.node.is_verified ? "✓" : "—"}
-                </span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Dependents</span>
-                <span className="text-gray-200">{tooltip.dependents}</span>
+                {tooltip.node.category && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-400">Type</span>
+                    <span className="text-gray-200">{tooltip.node.category}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-400">Verified</span>
+                  <span className={tooltip.node.is_verified ? "text-green-400" : "text-gray-500"}>
+                    {tooltip.node.is_verified ? "✓" : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-400">Dependents</span>
+                  <span className="text-gray-200">{tooltip.dependents}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   }
