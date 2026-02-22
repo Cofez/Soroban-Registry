@@ -80,12 +80,30 @@ impl TokenContract {
         }
     }
     
-    /// Transfer tokens with potential reentrancy
+    /// Transfer tokens with reentrancy protection (checks-effects-interactions + guard)
     pub fn send(env: Env, to: Address, amount: i128) {
-        // Cross-contract call before state modification
+        let balance_key = Symbol::new(&env, "balance");
+        let guard_key = Symbol::new(&env, "reentrancy_guard");
+
+        let guard_active = env.storage().persistent().get::<_, bool>(&guard_key).unwrap_or(false);
+        if guard_active {
+            panic!("Reentrancy detected");
+        }
+
+        // Effects before interactions
+        let current = env.storage().persistent().get::<_, i128>(&balance_key).unwrap_or(0);
+        env.storage().persistent().set(&balance_key, &(current - amount));
+
+        // Guard during external call
+        env.storage().persistent().set(&guard_key, &true);
         env.invoke_contract::<_, ()>(&to, &Symbol::new(&env, "receive"), (amount,));
-        
-        // State modification after cross-contract call
+        env.storage().persistent().set(&guard_key, &false);
+    }
+
+    /// Vulnerable send for comparison (reentrancy risk)
+    pub fn send_vulnerable(env: Env, to: Address, amount: i128) {
+        env.invoke_contract::<_, ()>(&to, &Symbol::new(&env, "receive"), (amount,));
+
         let balance_key = Symbol::new(&env, "balance");
         let current = env.storage().persistent().get::<_, i128>(&balance_key).unwrap_or(0);
         env.storage().persistent().set(&balance_key, &(current - amount));
@@ -108,6 +126,10 @@ fn test_transfer() {
 
 #[test]
 #[should_panic]
+fn test_reentrancy_guard_blocks_recursive_call() {
+    use soroban_sdk::testutils::Address as AddressTestutils;
+
+    let env = Env::new();
 fn test_transfer_requires_auth() {
     use soroban_sdk::testutils::Address as AddressTestutils;
 
@@ -118,6 +140,11 @@ fn test_transfer_requires_auth() {
     env.storage()
         .persistent()
         .set(&Symbol::new(&env, "balance"), &100i128);
+    env.storage()
+        .persistent()
+        .set(&Symbol::new(&env, "reentrancy_guard"), &true);
+
+    TokenContract::send(env, to, 10);
 
     let _ = TokenContract::transfer(env, from, to, 10);
 }
