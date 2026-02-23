@@ -54,7 +54,7 @@ pub async fn get_deprecation_info(
             Some(0)
         };
 
-        let replacement_contract_id = replacement_id.map(|id| id.to_string());
+        let replacement_contract_id = replacement_id.map(|id| id.to_string()).or_else(|| None);
 
         return Ok(Json(DeprecationInfo {
             contract_id,

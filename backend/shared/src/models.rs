@@ -167,7 +167,7 @@ pub struct ContractStats {
 }
 
 /// GraphNode (minimal contract info for graph rendering)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct GraphNode {
     pub id: Uuid,
     pub contract_id: String,
@@ -179,7 +179,7 @@ pub struct GraphNode {
 }
 
 /// Graph edge (dependency relationship)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct GraphEdge {
     pub source: Uuid,
     pub target: Uuid,

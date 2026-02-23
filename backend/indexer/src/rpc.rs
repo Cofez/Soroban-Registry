@@ -10,7 +10,7 @@ pub enum RpcError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(String),
     #[error("RPC returned error: {0}")]
-    Rpc(String),
+    RpcError(String),
     #[error("Invalid response format: {0}")]
     InvalidResponse(String),
     #[error("Network timeout")]
@@ -123,7 +123,7 @@ impl StellarRpcClient {
             })?;
 
         if !response.status().is_success() {
-            return Err(RpcError::Rpc(format!(
+            return Err(RpcError::RpcError(format!(
                 "HTTP {}: {}",
                 response.status(),
                 response.text().await.unwrap_or_default()
@@ -166,7 +166,7 @@ impl StellarRpcClient {
             })?;
 
         if !response.status().is_success() {
-            return Err(RpcError::Rpc(format!(
+            return Err(RpcError::RpcError(format!(
                 "HTTP {}: {}",
                 response.status(),
                 response.text().await.unwrap_or_default()
@@ -210,7 +210,7 @@ impl StellarRpcClient {
             })?;
 
         if !response.status().is_success() {
-            return Err(RpcError::Rpc(format!(
+            return Err(RpcError::RpcError(format!(
                 "HTTP {}: {}",
                 response.status(),
                 response.text().await.unwrap_or_default()
@@ -310,7 +310,7 @@ impl StellarRpcClient {
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(RpcError::Rpc(format!(
+            Err(RpcError::RpcError(format!(
                 "Health check failed with status {}",
                 response.status()
             )))

@@ -58,6 +58,7 @@ impl NetworkConfig {
             })?;
 
         // Validate poll interval is reasonable (1 second to 5 minutes)
+        if poll_interval_secs < 1 || poll_interval_secs > 300 {
         if !(1..=300).contains(&poll_interval_secs) {
             return Err(ConfigError::InvalidConfig(
                 "Poll interval must be between 1 and 300 seconds".to_string(),

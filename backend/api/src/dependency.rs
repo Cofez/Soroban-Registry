@@ -1,9 +1,12 @@
-use shared::{ContractDependency, DependencyDeclaration, DependencyTreeNode, GraphEdge, GraphNode, GraphResponse};
-use uuid::Uuid;
-use std::collections::{HashMap, HashSet, VecDeque};
-use sqlx::PgPool;
-use anyhow::Result;
 use crate::error::ApiError;
+use anyhow::Result;
+use shared::{
+    ContractDependency, DependencyDeclaration, DependencyTreeNode, GraphEdge, GraphNode,
+    GraphResponse,
+};
+use sqlx::PgPool;
+use std::collections::{HashMap, HashSet, VecDeque};
+use uuid::Uuid;
 
 /// Detect dependencies from a contract ABI JSON
 pub fn detect_dependencies_from_abi(abi_json: &serde_json::Value) -> Vec<DependencyDeclaration> {
@@ -11,10 +14,10 @@ pub fn detect_dependencies_from_abi(abi_json: &serde_json::Value) -> Vec<Depende
     let mut seen = HashSet::new();
 
     // In Soroban, external contract calls often use a 'Client' or are defined in the spec.
-    // We look for 'custom' types that might represent other contracts, 
+    // We look for 'custom' types that might represent other contracts,
     // or specific annotations if they exist.
     // For now, we'll scan for common patterns.
-    
+
     if let Some(specs) = abi_json.as_array() {
         for spec in specs {
             // Look for interface/contract client definitions
@@ -30,7 +33,7 @@ pub fn detect_dependencies_from_abi(abi_json: &serde_json::Value) -> Vec<Depende
                     }
                 }
             }
-            
+
             // Scan function inputs/outputs for custom types that might be contract IDs?
             // Actually, usually they are addressed by Symbol or Address.
             // But sometimes the 'type' field in the spec itself points to another contract.
@@ -41,10 +44,7 @@ pub fn detect_dependencies_from_abi(abi_json: &serde_json::Value) -> Vec<Depende
 }
 
 /// Calculate transitive closure of dependencies (all recursive dependencies)
-pub async fn get_transitive_dependencies(
-    pool: &PgPool,
-    root_id: Uuid,
-) -> Result<Vec<Uuid>> {
+pub async fn get_transitive_dependencies(pool: &PgPool, root_id: Uuid) -> Result<Vec<Uuid>> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(root_id);
@@ -73,10 +73,7 @@ pub async fn get_transitive_dependencies(
 }
 
 /// Calculate transitive closure of dependents (all contracts affected by this one)
-pub async fn get_transitive_dependents(
-    pool: &PgPool,
-    root_id: Uuid,
-) -> Result<Vec<Uuid>> {
+pub async fn get_transitive_dependents(pool: &PgPool, root_id: Uuid) -> Result<Vec<Uuid>> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(root_id);
@@ -86,7 +83,7 @@ pub async fn get_transitive_dependents(
 
     while let Some(current_id) = queue.pop_front() {
         let dependents: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT contract_id FROM contract_dependencies WHERE dependency_contract_id = $1"
+            "SELECT contract_id FROM contract_dependencies WHERE dependency_contract_id = $1",
         )
         .bind(current_id)
         .fetch_all(pool)
@@ -105,11 +102,7 @@ pub async fn get_transitive_dependents(
 }
 
 /// Detect if adding a dependency would create a cycle
-pub async fn detect_cycle(
-    pool: &PgPool,
-    start_node: Uuid,
-    potential_dep: Uuid,
-) -> Result<bool> {
+pub async fn detect_cycle(pool: &PgPool, start_node: Uuid, potential_dep: Uuid) -> Result<bool> {
     if start_node == potential_dep {
         return Ok(true);
     }
@@ -122,7 +115,7 @@ pub async fn detect_cycle(
 /// Build D3-compatible graph representation
 pub async fn build_dependency_graph(pool: &PgPool) -> Result<GraphResponse> {
     let contracts: Vec<GraphNode> = sqlx::query_as(
-        "SELECT id, contract_id, name, network, is_verified, category, tags FROM contracts"
+        "SELECT id, contract_id, name, network, is_verified, category, tags FROM contracts",
     )
     .fetch_all(pool)
     .await?;
@@ -149,24 +142,20 @@ pub async fn resolve_contract_id(pool: &PgPool, identifier: &str) -> Result<Opti
     }
 
     // Try contract_id (public key)
-    let id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM contracts WHERE contract_id = $1"
-    )
-    .bind(identifier)
-    .fetch_optional(pool)
-    .await?;
+    let id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM contracts WHERE contract_id = $1")
+        .bind(identifier)
+        .fetch_optional(pool)
+        .await?;
 
     if id.is_some() {
         return Ok(id);
     }
 
     // Try name
-    let id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM contracts WHERE name = $1"
-    )
-    .bind(identifier)
-    .fetch_optional(pool)
-    .await?;
+    let id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM contracts WHERE name = $1")
+        .bind(identifier)
+        .fetch_optional(pool)
+        .await?;
 
     Ok(id)
 }
@@ -187,7 +176,10 @@ pub async fn save_dependencies(
         let dep_contract_id = resolve_contract_id(pool, &decl.name).await?;
 
         if let Some(dep_id) = dep_contract_id {
-            if detect_cycle(pool, contract_id, dep_id).await.unwrap_or(false) {
+            if detect_cycle(pool, contract_id, dep_id)
+                .await
+                .unwrap_or(false)
+            {
                 tracing::warn!(
                     "Circular dependency detected: contract {} -> {}",
                     contract_id,

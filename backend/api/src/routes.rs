@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
 
@@ -22,6 +22,22 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route("/api/contracts/graph", get(handlers::get_contract_graph))
         .route("/api/contracts/:id", get(handlers::get_contract))
+        .route(
+            "/api/contracts/:id/metadata",
+            patch(handlers::update_contract_metadata),
+        )
+        .route(
+            "/api/contracts/:id/publisher",
+            patch(handlers::change_contract_publisher),
+        )
+        .route(
+            "/api/contracts/:id/status",
+            patch(handlers::update_contract_status),
+        )
+        .route(
+            "/api/contracts/:id/audit-log",
+            get(handlers::get_contract_audit_log),
+        )
         .route("/api/contracts/:id/abi", get(handlers::get_contract_abi))
         .route(
             "/api/contracts/:id/openapi.yaml",
@@ -79,6 +95,10 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/dependents",
             get(handlers::get_contract_dependents),
         )
+        .route(
+            "/api/contracts/:id/impact",
+            get(handlers::get_impact_analysis),
+        )
         .route("/api/contracts/:id/deprecation-info", get(deprecation_handlers::get_deprecation_info))
         .route("/api/contracts/:id/deprecate", post(deprecation_handlers::deprecate_contract))
         .route("/api/contracts/:id/state/:key", get(handlers::get_contract_state).post(handlers::update_contract_state))
@@ -88,6 +108,7 @@ pub fn contract_routes() -> Router<AppState> {
         .route("/api/contracts/:id/dependents", get(handlers::get_contract_dependents))
         .route("/api/contracts/:id/impact", get(handlers::get_impact_analysis))
         .route("/api/contracts/verify", post(handlers::verify_contract))
+        .route("/api/admin/audit-logs", get(handlers::get_all_audit_logs))
         .route(
             "/api/contracts/:id/performance",
             get(handlers::get_contract_performance),
