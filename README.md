@@ -182,6 +182,9 @@ soroban-registry migrate rollback <migration-id>
 soroban-registry migrate history --limit 20
 ```
 
+CLI configuration is stored at `~/.soroban-registry/config.toml`.
+If a legacy `~/.soroban-registry.toml` file exists, it will be migrated automatically.
+
 Migration commands read snapshots from `.soroban-registry/contracts/<contract-id>.json`
 and record all migration activity to `.soroban-registry/migration_history.jsonl`.
 
