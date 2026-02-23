@@ -99,6 +99,8 @@ pub async fn run_formal_verification(
         ApiError::InternalServerError
     })?;
 
+    state.cache.invalidate_verification(&contract_id.to_string()).await;
+
     Ok(Json(payload))
 }
 
@@ -107,6 +109,12 @@ pub async fn get_formal_verification_history(
     State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
 ) -> Result<Json<Vec<FormalVerificationReport>>, ApiError> {
+    if let Some(cached) = state.cache.get_verification(&contract_id.to_string()).await {
+        if let Ok(reports) = serde_json::from_str(&cached) {
+            return Ok(Json(reports));
+        }
+    }
+
     let sessions = sqlx::query_as::<_, FormalVerificationSession>(
         r#"
         SELECT id, contract_id, version, verifier_version, created_at, updated_at
@@ -159,6 +167,10 @@ pub async fn get_formal_verification_history(
             session,
             properties: prop_results,
         });
+    }
+
+    if let Ok(reports_json) = serde_json::to_string(&reports) {
+        state.cache.put_verification(&contract_id.to_string(), reports_json).await;
     }
 
     Ok(Json(reports))

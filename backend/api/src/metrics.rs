@@ -143,6 +143,11 @@ pub static CACHE_EVICTIONS: Lazy<IntCounter> = counter!("cache_evictions_total",
 pub static CACHE_SIZE_BYTES: Lazy<IntGauge> = gauge!("cache_size_bytes", "Cache size in bytes");
 pub static CACHE_ENTRIES: Lazy<IntGauge> = gauge!("cache_entries", "Number of cached entries");
 
+pub static ABI_CACHE_HITS: Lazy<IntCounter> = counter!("abi_cache_hits_total", "ABI cache hits");
+pub static ABI_CACHE_MISSES: Lazy<IntCounter> = counter!("abi_cache_misses_total", "ABI cache misses");
+pub static VERIFICATION_CACHE_HITS: Lazy<IntCounter> = counter!("verification_cache_hits_total", "Verification cache hits");
+pub static VERIFICATION_CACHE_MISSES: Lazy<IntCounter> = counter!("verification_cache_misses_total", "Verification cache misses");
+
 // ── Resources ────────────────────────────────────────────────────────────────────
 pub static RESOURCE_RECORDINGS: Lazy<IntCounter> =
     counter!("resource_recordings_total", "Resource usage recordings");
@@ -259,6 +264,10 @@ pub fn register_all(r: &Registry) -> prometheus::Result<()> {
     r.register(Box::new(CACHE_EVICTIONS.clone()))?;
     r.register(Box::new(CACHE_SIZE_BYTES.clone()))?;
     r.register(Box::new(CACHE_ENTRIES.clone()))?;
+    r.register(Box::new(ABI_CACHE_HITS.clone()))?;
+    r.register(Box::new(ABI_CACHE_MISSES.clone()))?;
+    r.register(Box::new(VERIFICATION_CACHE_HITS.clone()))?;
+    r.register(Box::new(VERIFICATION_CACHE_MISSES.clone()))?;
     r.register(Box::new(RESOURCE_RECORDINGS.clone()))?;
     r.register(Box::new(RESOURCE_ALERTS_FIRED.clone()))?;
     r.register(Box::new(RESOURCE_FORECAST_RUNS.clone()))?;

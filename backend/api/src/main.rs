@@ -78,6 +78,10 @@ async fn main() -> Result<()> {
     // Create app state
     let is_shutting_down = Arc::new(AtomicBool::new(false));
     let state = AppState::new(pool.clone(), registry, is_shutting_down.clone());
+    
+    // Warm up the cache
+    state.cache.clone().warm_up(pool.clone());
+
     let rate_limit_state = RateLimitState::from_env();
 
     let cors = CorsLayer::new()

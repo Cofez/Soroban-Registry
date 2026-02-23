@@ -17,6 +17,7 @@ use shared::{
     TimelineEntry, TopUser,
 };
 use uuid::Uuid;
+use std::time::Duration;
 
 /// Query params for GET /contracts/:id (Issue #43)
 #[derive(Debug, serde::Deserialize)]
@@ -422,6 +423,10 @@ pub async fn create_contract_version(
     tx.commit()
         .await
         .map_err(|err| db_internal_error("commit contract version", err))?;
+
+    state.cache.invalidate_abi(&contract_id).await;
+    state.cache.invalidate_abi(&contract_uuid.to_string()).await;
+    state.cache.invalidate_abi(&format!("{}@{}", contract_id, req.version)).await;
 
     // Post-commit dependency analysis
     let detected_deps = dependency::detect_dependencies_from_abi(&req.abi);

@@ -336,17 +336,27 @@ fn diff_enum_variants(
 }
 
 pub(crate) async fn resolve_abi(state: &AppState, selector: &str) -> ApiResult<String> {
-    if let Some((contract_id, version)) = selector.split_once('@') {
-        return fetch_abi_by_contract_and_version(state, contract_id, version).await;
+    if let Some(cached) = state.cache.get_abi(selector).await {
+        return Ok(cached);
     }
 
-    if let Ok(version_id) = Uuid::parse_str(selector) {
+    let abi_result = if let Some((contract_id, version)) = selector.split_once('@') {
+        fetch_abi_by_contract_and_version(state, contract_id, version).await
+    } else if let Ok(version_id) = Uuid::parse_str(selector) {
         if let Some((contract_id, version)) = fetch_contract_version(state, version_id).await? {
-            return fetch_abi_by_contract_uuid_and_version(state, contract_id, &version).await;
+            fetch_abi_by_contract_uuid_and_version(state, contract_id, &version).await
+        } else {
+            fetch_latest_abi_for_contract(state, selector).await
         }
+    } else {
+        fetch_latest_abi_for_contract(state, selector).await
+    };
+
+    if let Ok(abi) = &abi_result {
+        state.cache.put_abi(selector, abi.clone()).await;
     }
 
-    fetch_latest_abi_for_contract(state, selector).await
+    abi_result
 }
 
 async fn fetch_contract_version(

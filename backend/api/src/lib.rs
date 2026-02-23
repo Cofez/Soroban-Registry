@@ -10,3 +10,4 @@ pub mod notification_routes;
 pub mod post_incident_handlers;
 pub mod post_incident_routes;
 pub mod state;
+pub mod metrics;
