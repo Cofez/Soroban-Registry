@@ -114,11 +114,24 @@ async fn main() -> Result<()> {
 
     let rate_limit_state = RateLimitState::from_env();
 
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| {
+        "http://localhost:3000,https://soroban-registry.vercel.app".to_string()
+    });
+
+    let origins: Vec<HeaderValue> = allowed_origins
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(HeaderValue::from_str(s).expect("Invalid allowed origin"))
+            }
+        })
+        .collect();
+
     let cors = CorsLayer::new()
-        .allow_origin([
-            HeaderValue::from_static("http://localhost:3000"),
-            HeaderValue::from_static("https://soroban-registry.vercel.app"),
-        ])
+        .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
@@ -137,7 +150,6 @@ async fn main() -> Result<()> {
             rate_limit_state,
             rate_limit::rate_limit_middleware,
         ))
-        .layer(CorsLayer::permissive())
         .layer(cors)
         .with_state(state);
 
