@@ -23,6 +23,7 @@ import Navbar from "@/components/Navbar";
 import MaintenanceBanner from "@/components/MaintenanceBanner";
 import CustomMetricsPanel from "@/components/CustomMetricsPanel";
 import DeprecationBanner from "@/components/DeprecationBanner";
+import ReleaseNotesPanel from "@/components/ReleaseNotesPanel";
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
 
@@ -297,6 +298,9 @@ function ContractDetailsContent() {
 
           {/* Formal Verification Panel */}
           <FormalVerificationPanel contractId={contract.id} />
+
+          {/* Release Notes Panel */}
+          <ReleaseNotesPanel contractId={contract.id} />
         </div>
       </div>
     </div>
