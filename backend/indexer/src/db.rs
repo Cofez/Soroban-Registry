@@ -120,22 +120,75 @@ impl DatabaseWriter {
         deployments: &[ContractDeployment],
         network: &Network,
     ) -> Result<(usize, usize), DatabaseError> {
+        if deployments.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            error!("Failed to begin transaction: {}", e);
+            DatabaseError::SqlError(e.to_string())
+        })?;
+
         let mut new_count = 0;
         let mut duplicate_count = 0;
+        let network_str = network_to_str(network);
+        let now = chrono::Utc::now();
 
-        for deployment in deployments {
-            match self.write_contract(deployment, network).await {
-                Ok(true) => new_count += 1,
-                Ok(false) => duplicate_count += 1,
-                Err(e) => {
-                    error!(
-                        "Failed to write contract: {}, error: {}",
-                        deployment.contract_id, e
-                    );
-                    // Continue with next contract, don't fail the entire batch
-                }
-            }
+        // 1. Resolve all publishers first
+        let deployers: std::collections::HashSet<&str> =
+            deployments.iter().map(|d| d.deployer.as_str()).collect();
+
+        let mut publisher_map = std::collections::HashMap::new();
+
+        for deployer in deployers {
+            let publisher_id = self.get_or_create_publisher_tx(&mut tx, deployer).await?;
+            publisher_map.insert(deployer, publisher_id);
         }
+
+        // 2. Perform batch insert for contracts
+        // We use a loop for now but within the SAME transaction for atomicity.
+        // To satisfy the "single multi-row INSERT" request, we use QueryBuilder.
+        use sqlx::QueryBuilder;
+
+        // Note: ON CONFLICT DO NOTHING handles duplicates gracefully
+        let mut query_builder: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+            "INSERT INTO contracts (id, contract_id, wasm_hash, name, publisher_id, network, is_verified, created_at, updated_at) "
+        );
+
+        query_builder.push_values(deployments.iter(), |mut b, deployment| {
+            let publisher_id = publisher_map.get(deployment.deployer.as_str()).unwrap();
+            let wasm_hash = format!("{}_{}", deployment.contract_id, deployment.op_id);
+            b.push_bind(Uuid::new_v4())
+                .push_bind(&deployment.contract_id)
+                .push_bind(wasm_hash)
+                .push_bind(&deployment.contract_id)
+                .push_bind(publisher_id)
+                .push_bind(network_str)
+                .push_bind(false)
+                .push_bind(now)
+                .push_bind(now);
+        });
+
+        query_builder.push(" ON CONFLICT (contract_id, network) DO NOTHING RETURNING contract_id");
+
+        let query = query_builder.build();
+        let rows = query.fetch_all(&mut *tx).await.map_err(|e| {
+            error!("Failed to execute batch contract insert: {}", e);
+            DatabaseError::SqlError(e.to_string())
+        })?;
+
+        let inserted_ids: std::collections::HashSet<String> = rows
+            .into_iter()
+            .map(|r| r.get::<String, _>("contract_id"))
+            .collect();
+
+        new_count = inserted_ids.len();
+        duplicate_count = deployments.len() - new_count;
+
+        tx.commit().await.map_err(|e| {
+            error!("Failed to commit transaction: {}", e);
+            DatabaseError::SqlError(e.to_string())
+        })?;
 
         info!(
             "Batch write complete: new={}, duplicates={}",
@@ -143,6 +196,38 @@ impl DatabaseWriter {
         );
 
         Ok((new_count, duplicate_count))
+    }
+
+    /// Get or create a publisher record - transaction version
+    async fn get_or_create_publisher_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        address: &str,
+    ) -> Result<Uuid, DatabaseError> {
+        let now = chrono::Utc::now();
+        let new_id = Uuid::new_v4();
+
+        // Use ON CONFLICT to either insert or get the existing ID
+        let row = sqlx::query(
+            r#"
+            INSERT INTO publishers (id, stellar_address, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (stellar_address) DO UPDATE
+            SET stellar_address = EXCLUDED.stellar_address
+            RETURNING id
+            "#,
+        )
+        .bind(new_id)
+        .bind(address)
+        .bind(now)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to upsert publisher: {}", e);
+            DatabaseError::SqlError(e.to_string())
+        })?;
+
+        Ok(row.get("id"))
     }
 
     /// Get or create a publisher record for a deployer address

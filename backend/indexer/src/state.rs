@@ -21,6 +21,7 @@ pub enum StateError {
 pub struct IndexerState {
     pub network: Network,
     pub last_indexed_ledger_height: u64,
+    pub last_indexed_ledger_hash: Option<String>,
     pub last_checkpoint_ledger_height: u64,
     pub consecutive_failures: i32,
 }
@@ -67,6 +68,7 @@ impl StateManager {
             SELECT 
                 network::text,
                 last_indexed_ledger_height,
+                last_indexed_ledger_hash,
                 last_checkpoint_ledger_height,
                 consecutive_failures
             FROM indexer_state
@@ -85,6 +87,9 @@ impl StateManager {
             last_indexed_ledger_height: row
                 .try_get::<i64, _>("last_indexed_ledger_height")
                 .unwrap_or(0) as u64,
+            last_indexed_ledger_hash: row
+                .try_get::<Option<String>, _>("last_indexed_ledger_hash")
+                .unwrap_or(None),
             last_checkpoint_ledger_height: row
                 .try_get::<i64, _>("last_checkpoint_ledger_height")
                 .unwrap_or(0) as u64,
@@ -105,13 +110,15 @@ impl StateManager {
             UPDATE indexer_state
             SET 
                 last_indexed_ledger_height = $1,
-                last_checkpoint_ledger_height = $2,
-                consecutive_failures = $3,
+                last_indexed_ledger_hash = $2,
+                last_checkpoint_ledger_height = $3,
+                consecutive_failures = $4,
                 indexed_at = NOW()
-            WHERE network = $4::network_type
+            WHERE network = $5::network_type
         "#,
         )
         .bind(state.last_indexed_ledger_height as i64)
+        .bind(&state.last_indexed_ledger_hash)
         .bind(state.last_checkpoint_ledger_height as i64)
         .bind(state.consecutive_failures)
         .bind(network_str)

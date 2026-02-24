@@ -37,27 +37,26 @@ impl ReorgHandler {
             return Ok(false);
         }
 
-        // Fetch the last indexed ledger to verify its hash (simplified check for now)
-        // In production, would compare against stored ledger hashes in database
-        let _ledger = rpc_client
+        let stored_hash = match &state.last_indexed_ledger_hash {
+            Some(hash) => hash,
+            None => {
+                // If we don't have a stored hash but have indexed ledgers,
+                // we should probably assume no reorg for now but warn
+                warn!("No stored ledger hash for height {}, skipping reorg check", state.last_indexed_ledger_height);
+                return Ok(false);
+            }
+        };
+
+        // Fetch the last indexed ledger to verify its hash
+        let ledger = rpc_client
             .get_ledger(state.last_indexed_ledger_height)
             .await
-            .map_err(|e| ReorgError::RpcError(format!("Failed to fetch ledger: {}", e)))?;
+            .map_err(|e| ReorgError::RpcError(format!("Failed to fetch ledger {}: {}", state.last_indexed_ledger_height, e)))?;
 
-        // For now, we assume the current RPC endpoint is the source of truth
-        // In a real scenario, you might compare against stored hashes in the database
-        // This is a simplified check - a real implementation would store ledger hashes
-
-        // Check if we're too far behind (potential reorg indicator)
-        let latest_ledger = rpc_client
-            .get_latest_ledger()
-            .await
-            .map_err(|e| ReorgError::RpcError(format!("Failed to fetch latest ledger: {}", e)))?;
-
-        if latest_ledger.sequence > state.last_indexed_ledger_height + 100 {
+        if &ledger.hash != stored_hash {
             warn!(
-                "Potential reorg detected: latest_ledger={}, last_indexed={}",
-                latest_ledger.sequence, state.last_indexed_ledger_height
+                "Reorg detected! Hash mismatch at height {}: stored={}, current={}",
+                state.last_indexed_ledger_height, stored_hash, ledger.hash
             );
             return Ok(true);
         }
@@ -78,6 +77,7 @@ impl ReorgHandler {
 
         // Fall back to last checkpoint
         state.last_indexed_ledger_height = state.last_checkpoint_ledger_height;
+        state.last_indexed_ledger_hash = None;
 
         // Persist the recovery
         state_manager
