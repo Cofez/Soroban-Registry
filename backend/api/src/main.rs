@@ -19,6 +19,8 @@ mod metrics_handler;
 mod rate_limit;
 pub mod request_tracing;
 mod routes;
+mod release_notes_handlers;
+mod release_notes_routes;
 pub mod signing_handlers;
 mod state;
 mod type_safety;
@@ -99,6 +101,7 @@ async fn main() -> Result<()> {
         .merge(routes::health_routes())
         .merge(routes::migration_routes())
         .merge(routes::compatibility_dashboard_routes())
+        .merge(release_notes_routes::release_notes_routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(request_tracing::tracing_middleware))
         .layer(middleware::from_fn_with_state(
