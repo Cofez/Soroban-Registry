@@ -10,14 +10,14 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
-use std::time::Duration;
 use shared::{
-    Contract, ContractAnalyticsResponse, ContractGetResponse, ContractInteractionResponse,
-    ContractSearchParams, ContractVersion, CreateContractVersionRequest,
-    CreateInteractionBatchRequest, CreateInteractionRequest, DeploymentStats,
-    InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
-    PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser,
+    AnalyticsEventType, Contract, ContractAnalyticsResponse, ContractGetResponse,
+    ContractInteractionResponse, ContractSearchParams, ContractVersion,
+    CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
+    DeploymentStats, InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network,
+    NetworkConfig, PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser,
 };
+use std::time::Duration;
 use uuid::Uuid;
 
 /// Query params for GET /contracts/:id (Issue #43)
@@ -27,6 +27,7 @@ pub struct GetContractQuery {
 }
 
 use crate::{
+    analytics,
     breaking_changes::{diff_abi, has_breaking_changes, resolve_abi},
     dependency,
     error::{ApiError, ApiResult},
@@ -648,7 +649,10 @@ pub async fn create_contract_version(
 
     state.cache.invalidate_abi(&contract_id).await;
     state.cache.invalidate_abi(&contract_uuid.to_string()).await;
-    state.cache.invalidate_abi(&format!("{}@{}", contract_id, req.version)).await;
+    state
+        .cache
+        .invalidate_abi(&format!("{}@{}", contract_id, req.version))
+        .await;
 
     // Post-commit dependency analysis
     let detected_deps = dependency::detect_dependencies_from_abi(&req.abi);
@@ -668,6 +672,17 @@ pub async fn create_contract_version(
             .invalidate("system", "global:dependency_graph")
             .await;
     }
+
+    let _ = analytics::record_event(
+        &state.db,
+        AnalyticsEventType::VersionCreated,
+        Some(version_row.contract_id),
+        None, // Version creation usually doesn't need publisher_id explicitly if we have contract_id
+        None,
+        None,
+        Some(json!({ "version": version_row.version })),
+    )
+    .await;
 
     Ok(Json(version_row))
 }
@@ -824,6 +839,17 @@ pub async fn publish_contract(
     .await
     .map_err(|err| db_internal_error("write contract_created audit log", err))?;
 
+    let _ = analytics::record_event(
+        &state.db,
+        AnalyticsEventType::ContractPublished,
+        Some(contract.id),
+        Some(publisher.id),
+        None,
+        Some(&contract.network),
+        Some(json!({ "name": contract.name })),
+    )
+    .await;
+
     Ok(Json(contract))
 }
 
@@ -846,6 +872,17 @@ pub async fn create_publisher(
     .fetch_one(&state.db)
     .await
     .map_err(|err| db_internal_error("create publisher", err))?;
+
+    let _ = analytics::record_event(
+        &state.db,
+        AnalyticsEventType::PublisherCreated,
+        None,
+        Some(created.id),
+        None,
+        None,
+        Some(json!({ "stellar_address": created.stellar_address })),
+    )
+    .await;
 
     Ok(Json(created))
 }
@@ -1262,6 +1299,17 @@ pub async fn verify_contract(
         .map_err(|err| db_internal_error("write status_changed audit log", err))?;
     }
 
+    let _ = analytics::record_event(
+        &state.db,
+        AnalyticsEventType::ContractVerified,
+        Some(contract.id),
+        Some(contract.publisher_id),
+        None,
+        Some(&contract.network),
+        Some(json!({ "verification_id": verification_id })),
+    )
+    .await;
+
     Ok(Json(json!({
         "verified": true,
         "verification_id": verification_id,
@@ -1357,11 +1405,22 @@ pub async fn update_contract_metadata(
             ContractAuditEventType::MetadataUpdated,
             after.id,
             req.user_id.unwrap_or(before.publisher_id),
-            Value::Object(changes),
+            Value::Object(changes.clone()),
             &extract_ip_address(&headers),
         )
         .await
         .map_err(|err| db_internal_error("write metadata_updated audit log", err))?;
+
+        let _ = analytics::record_event(
+            &state.db,
+            AnalyticsEventType::ContractUpdated,
+            Some(after.id),
+            Some(after.publisher_id),
+            None,
+            Some(&after.network),
+            Some(json!({ "changes": changes })),
+        )
+        .await;
     }
 
     Ok(Json(after))
