@@ -18,6 +18,7 @@ mod migration;
 mod multisig;
 mod package_signing;
 mod patch;
+mod release_notes;
 mod profiler;
 mod sla;
 mod test_framework;
@@ -445,6 +446,111 @@ pub enum Commands {
     Webhook {
         #[command(subcommand)]
         action: WebhookCommands,
+    },
+
+    /// Auto-generate and manage release notes for contract versions
+    ReleaseNotes {
+        #[command(subcommand)]
+        action: ReleaseNotesCommands,
+    },
+}
+
+/// Sub-commands for the `release-notes` group
+#[derive(Debug, Subcommand)]
+pub enum ReleaseNotesCommands {
+    /// Auto-generate release notes from code diff and changelog
+    Generate {
+        /// Contract registry ID (UUID or on-chain ID)
+        #[arg(long)]
+        contract_id: String,
+
+        /// Version to generate notes for (semver, e.g. 1.2.0)
+        #[arg(long)]
+        version: String,
+
+        /// Previous version to diff against (auto-detected if omitted)
+        #[arg(long)]
+        previous_version: Option<String>,
+
+        /// Path to CHANGELOG.md file (auto-detected if present in cwd)
+        #[arg(long)]
+        changelog: Option<String>,
+
+        /// On-chain contract address to include in notes
+        #[arg(long)]
+        contract_address: Option<String>,
+
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// View generated release notes for a version
+    View {
+        /// Contract registry ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Version to view
+        #[arg(long)]
+        version: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Edit draft release notes before publishing
+    Edit {
+        /// Contract registry ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Version to edit
+        #[arg(long)]
+        version: String,
+
+        /// Path to a file containing the new release notes text
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Inline text for the release notes
+        #[arg(long)]
+        text: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Publish (finalize) release notes
+    Publish {
+        /// Contract registry ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Version to publish
+        #[arg(long)]
+        version: String,
+
+        /// Skip updating the contract_versions.release_notes column
+        #[arg(long)]
+        skip_version_update: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List all release notes for a contract
+    List {
+        /// Contract registry ID
+        #[arg(long)]
+        contract_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1407,6 +1513,97 @@ async fn main() -> Result<()> {
             WebhookCommands::VerifySig { secret, payload, signature } => {
                 log::debug!("Command: webhook verify-sig");
                 webhook::verify_signature_cmd(&secret, &payload, &signature)?;
+            }
+        },
+        // ── Release Notes commands ───────────────────────────────────────────
+        Commands::ReleaseNotes { action } => match action {
+            ReleaseNotesCommands::Generate {
+                contract_id,
+                version,
+                previous_version,
+                changelog,
+                contract_address,
+                json,
+            } => {
+                log::debug!(
+                    "Command: release-notes generate | contract_id={} version={}",
+                    contract_id,
+                    version
+                );
+                release_notes::generate(
+                    &cli.api_url,
+                    &contract_id,
+                    &version,
+                    previous_version.as_deref(),
+                    changelog.as_deref(),
+                    contract_address.as_deref(),
+                    json,
+                )
+                .await?;
+            }
+            ReleaseNotesCommands::View {
+                contract_id,
+                version,
+                json,
+            } => {
+                log::debug!(
+                    "Command: release-notes view | contract_id={} version={}",
+                    contract_id,
+                    version
+                );
+                release_notes::view(&cli.api_url, &contract_id, &version, json).await?;
+            }
+            ReleaseNotesCommands::Edit {
+                contract_id,
+                version,
+                file,
+                text,
+                json,
+            } => {
+                log::debug!(
+                    "Command: release-notes edit | contract_id={} version={}",
+                    contract_id,
+                    version
+                );
+                release_notes::edit(
+                    &cli.api_url,
+                    &contract_id,
+                    &version,
+                    file.as_deref(),
+                    text.as_deref(),
+                    json,
+                )
+                .await?;
+            }
+            ReleaseNotesCommands::Publish {
+                contract_id,
+                version,
+                skip_version_update,
+                json,
+            } => {
+                log::debug!(
+                    "Command: release-notes publish | contract_id={} version={}",
+                    contract_id,
+                    version
+                );
+                release_notes::publish(
+                    &cli.api_url,
+                    &contract_id,
+                    &version,
+                    skip_version_update,
+                    json,
+                )
+                .await?;
+            }
+            ReleaseNotesCommands::List {
+                contract_id,
+                json,
+            } => {
+                log::debug!(
+                    "Command: release-notes list | contract_id={}",
+                    contract_id
+                );
+                release_notes::list(&cli.api_url, &contract_id, json).await?;
             }
         },
     }
